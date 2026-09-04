@@ -1,12 +1,10 @@
 {
-  "projectId": "rational-theater-cxctm",
-  "appId": "1:1091592828459:web:38386f1aae31dc94009c6e",
-  "apiKey": "AIzaSyCXZJSiAnnSaJSe46otQLONkPmAk4SrNBA",
-  "authDomain": "rational-theater-cxctm.firebaseapp.com",
-  "firestoreDatabaseId": "ai-studio-lchthikhabiuhctp-a6d43cdc-efcb-43ed-9290-693f3fe1ee7c",
-  "storageBucket": "rational-theater-cxctm.firebasestorage.app",
-  "messagingSenderId": "1091592828459",
-  "measurementId": "",
-  "oAuthClientId": "1091592828459-38s01uiqv7orfqjbgdie6c6jdjjua25v.apps.googleusercontent.com",
-  "recaptchaSiteKey": ""
+  "projectId": "thoikhoabieupro",
+  "appId": "1:969500854260:web:cb154d5d7088ecb85f5ba1",
+  "apiKey": "AIzaSyBRhqa7R2rPOxSF1Mfif_l5tIWR2QXQqwA",
+  "authDomain": "thoikhoabieupro.firebaseapp.com",
+  "firestoreDatabaseId": "(default)",
+  "storageBucket": "thoikhoabieupro.firebasestorage.app",
+  "messagingSenderId": "969500854260",
+  "measurementId": "G-WXY6VJHSC3"
 }
