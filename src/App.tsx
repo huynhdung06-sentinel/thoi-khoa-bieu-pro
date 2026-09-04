@@ -26,7 +26,7 @@ import {
 } from './data/mockData';
 import { getVietnamCurrentMondayStr, getVietnamTodayString, getTodayVietnamInfo } from './utils/dateUtils';
 import { saveSafeItem, setLocalStorageItemSafe, getSafeItemAsync, getSafeItemSync, clearProfileStorage } from './utils/safeStorage';
-import { getChildData, saveChildData, auth, signOut } from './lib/firebase';
+import { getChildData, saveChildData, auth, signOut, signInWithGoogle, createFamilyAccount, createChildProfile } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
 import { ShareModal } from './components/ShareModal';
@@ -48,6 +48,16 @@ import { RegistrationIntro } from './components/RegistrationIntro';
 import { ParentPinChallengeModal } from './components/ParentPinChallengeModal';
 import { ParentDashboardModal } from './components/ParentDashboardModal';
 import { AboutStoryModal } from './components/AboutStoryModal';
+import { BackupReminderModal } from './components/BackupReminderModal';
+import { FamilyCodeCardModal } from './components/FamilyCodeCardModal';
+import { 
+  getBackupStatus, 
+  createBackupPackage, 
+  validateAndParseBackup, 
+  setLastBackupTimestamp, 
+  incrementUnsavedChanges, 
+  resetUnsavedChanges 
+} from './utils/backupManager';
 import { BookOpen, ShieldAlert, Sparkles, CheckCircle2, FileText, Award, Calendar, BarChart3, GraduationCap } from 'lucide-react';
 
 const STORAGE_KEY_PREFIX = 'mindmap_school_v2_';
@@ -103,19 +113,104 @@ export default function App() {
     }
   }, [family]);
 
-  // Active child profile
+  // Active child profile & Auto-login for remembered device
   const [activeChildProfile, setActiveChildProfile] = useState<ChildProfile | null>(() => {
+    try {
+      const rememberedId = localStorage.getItem('mindmap_remembered_student_id');
+      if (rememberedId && family.children && family.children.length > 0) {
+        const found = family.children.find(c => c.id === rememberedId);
+        if (found) return found;
+      }
+    } catch (e) {
+      console.error(e);
+    }
     return family.children[0] || null;
   });
 
-  // Màn hình Intro hiện ra mỗi lần học sinh vào học để tự bấm chọn tài khoản của mình
-  const [isIntroOpen, setIsIntroOpen] = useState<boolean>(true);
+  // Màn hình Intro: Nếu máy con đã được ghi nhớ -> vào thẳng! Nếu chưa -> mở màn hình chọn hồ sơ / đăng nhập
+  const [isIntroOpen, setIsIntroOpen] = useState<boolean>(() => {
+    try {
+      const rememberedId = localStorage.getItem('mindmap_remembered_student_id');
+      if (rememberedId && family.children && family.children.length > 0) {
+        const found = family.children.find(c => c.id === rememberedId);
+        if (found) return false; // Auto skip intro into student app
+      }
+    } catch (e) {
+      console.error(e);
+    }
+    return true;
+  });
+
+  const [showFamilyCodeModal, setShowFamilyCodeModal] = useState<boolean>(false);
+
+  // Chế độ Khách (Play as Guest) & Trải nghiệm nhanh 10 phút
+  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}is_guest`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  // Demo 10-minute countdown state
+  const [demoTimeRemaining, setDemoTimeRemaining] = useState<number | null>(() => {
+    try {
+      const expiresStr = localStorage.getItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
+      if (expiresStr) {
+        const expiresAt = parseInt(expiresStr, 10);
+        const diff = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+        if (diff > 0) return diff;
+      }
+    } catch {}
+    return null;
+  });
+  const [showDemoExpiredModal, setShowDemoExpiredModal] = useState<boolean>(false);
+  const [showAccountLinkingModal, setShowAccountLinkingModal] = useState<boolean>(false);
+  const [isLinkingAccount, setIsLinkingAccount] = useState<boolean>(false);
+  const [linkingError, setLinkingError] = useState<string>('');
 
   // 1. Dashboard Tab Navigation
   const [activeTab, setActiveTab] = useState<DashboardTab>('timetable');
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [selectedLessonIdForLibrary, setSelectedLessonIdForLibrary] = useState<string | undefined>(undefined);
   const [selectedSubjectForLibrary, setSelectedSubjectForLibrary] = useState<string | undefined>(undefined);
+
+  // Local-First Backup Sentinel
+  const [backupStatus, setBackupStatus] = useState(() => getBackupStatus());
+  const [showBackupReminderModal, setShowBackupReminderModal] = useState<boolean>(false);
+
+  // Periodic and change-based backup status refresh
+  const refreshBackupStatus = () => {
+    const updated = getBackupStatus();
+    setBackupStatus(updated);
+    if (updated.status === 'warning' && (updated.unsavedCount >= 5 || updated.daysSinceLastBackup >= 5)) {
+      // Auto trigger gentle reminder if not currently in intro
+      if (!isIntroOpen) {
+        setShowBackupReminderModal(true);
+      }
+    }
+  };
+
+  // Check backup status on mount and periodically
+  useEffect(() => {
+    refreshBackupStatus();
+    const interval = setInterval(refreshBackupStatus, 60000); // every 1 min
+    return () => clearInterval(interval);
+  }, [isIntroOpen]);
+
+  // Beforeunload warning if user has multiple unsaved changes
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      const current = getBackupStatus();
+      if (current.unsavedCount >= 3) {
+        e.preventDefault();
+        e.returnValue = 'Bạn có dữ liệu mới chưa tải file sao lưu về máy. Bạn có chắc muốn rời đi?';
+        return e.returnValue;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
 
   // Always ensure light mode on html tag
   useEffect(() => {
@@ -324,6 +419,68 @@ export default function App() {
   const [isLessonBankOpen, setIsLessonBankOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
 
+  // Link Guest Account to Google Cloud
+  const handleExecuteAccountLinking = async () => {
+    setIsLinkingAccount(true);
+    setLinkingError('');
+    try {
+      const user = await signInWithGoogle();
+      if (user) {
+        const childId = activeChildProfile?.id || 'child_1';
+        const childToSave: ChildProfile = activeChildProfile || {
+          id: childId,
+          name: classInfo.studentName || 'Học sinh',
+          grade: 6,
+          className: classInfo.className || 'Lớp 6A',
+          avatar: '🚀',
+        };
+
+        const updatedFamily: FamilyAccount = {
+          parentName: user.displayName || family.parentName || 'Bố Mẹ',
+          parentPin: family.parentPin || '1234',
+          children: family.children && family.children.length > 0 ? family.children : [childToSave]
+        };
+
+        await createFamilyAccount(user.uid, {
+          parentName: updatedFamily.parentName,
+          parentPin: updatedFamily.parentPin
+        });
+
+        await createChildProfile(user.uid, childToSave);
+
+        await saveChildData(user.uid, childId, {
+          classInfo,
+          subjects,
+          timetableSlots,
+          lessons,
+          lessonPlans,
+          studyRecords,
+          documents,
+          periods
+        });
+
+        setFamily(updatedFamily);
+        setIsGuestMode(false);
+        try {
+          localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
+        } catch {}
+
+        setShowAccountLinkingModal(false);
+        alert('🎉 Chúc mừng! Thời khóa biểu của bạn đã được sao lưu an toàn lên tài khoản Google.');
+      }
+    } catch (err: any) {
+      console.error('Error linking account:', err);
+      const errMsg = err?.message || '';
+      if (err?.code === 'auth/unauthorized-domain' || errMsg.includes('auth/unauthorized-domain')) {
+        setLinkingError('Tên miền máy chủ chưa được thêm vào Firebase Authorized Domains. Bạn có thể tiếp tục sử dụng bình thường trên thiết bị này!');
+      } else {
+        setLinkingError('Đăng nhập không thành công: ' + (errMsg || 'Vui lòng thử lại sau.'));
+      }
+    } finally {
+      setIsLinkingAccount(false);
+    }
+  };
+
   // Week navigation
   const normalizeToMonday = (dateStr: string) => {
     try {
@@ -464,6 +621,8 @@ export default function App() {
     setActiveRecordForModal(newRecord);
     setIsSlotModalOpen(false);
     setActiveTimetableSlotContext(null);
+    incrementUnsavedChanges();
+    refreshBackupStatus();
   };
 
   // Parent review handler
@@ -880,27 +1039,42 @@ export default function App() {
     });
 
     setActiveRecordForModal(newRecord);
+    incrementUnsavedChanges();
+    refreshBackupStatus();
   };
 
-  // Export JSON Data
+  // Export JSON Data (Local-First Backup Package)
   const handleExportData = () => {
-    const data = {
-      classInfo,
-      timetableSlots,
-      lessons,
-      lessonPlans,
-      studyRecords,
-      documents,
-      periods,
-      exportedAt: new Date().toISOString(),
-    };
-    const jsonStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(data, null, 2))}`;
-    const a = document.createElement('a');
-    a.href = jsonStr;
-    a.download = `mindmap_school_${classInfo.className}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.json`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
+    try {
+      const backupPackage = createBackupPackage({
+        family,
+        classInfo,
+        timetableSlots,
+        subjects: SUBJECTS_LIST,
+        periods,
+        lessons,
+        lessonPlans,
+        studyRecords,
+        documents
+      });
+
+      const fileName = `TKB_Cap2_${(classInfo.className || 'LopHoc').replace(/\s+/g, '_')}_${(classInfo.studentName || 'HocSinh').replace(/\s+/g, '_')}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.json`;
+      const jsonStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupPackage, null, 2))}`;
+      
+      const a = document.createElement('a');
+      a.href = jsonStr;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+
+      // Reset unsaved count and mark backup timestamp
+      setLastBackupTimestamp();
+      refreshBackupStatus();
+      setShowBackupReminderModal(false);
+    } catch (err: any) {
+      alert(`Không thể xuất dữ liệu: ${err?.message || 'Đã xảy ra lỗi'}`);
+    }
   };
 
   // Import JSON Data
@@ -910,19 +1084,36 @@ export default function App() {
 
     const reader = new FileReader();
     reader.onload = (event) => {
-      try {
-        const parsed = JSON.parse(event.target?.result as string);
-        if (parsed.classInfo) setClassInfo(parsed.classInfo);
-        if (Array.isArray(parsed.timetableSlots)) setTimetableSlots(parsed.timetableSlots);
-        if (Array.isArray(parsed.lessons)) setLessons(parsed.lessons);
-        if (Array.isArray(parsed.lessonPlans)) setLessonPlans(parsed.lessonPlans);
-        if (Array.isArray(parsed.studyRecords)) setStudyRecords(parsed.studyRecords);
-        if (Array.isArray(parsed.documents)) setDocuments(parsed.documents);
-        if (Array.isArray(parsed.periods)) setPeriods(parsed.periods);
-        alert('Đã nhập dữ liệu thành công!');
-      } catch (err) {
-        alert('File không hợp lệ!');
+      const text = event.target?.result as string;
+      const { isValid, error, data, summary } = validateAndParseBackup(text);
+
+      if (!isValid || !data) {
+        alert(error || 'Tệp sao lưu không hợp lệ!');
+        return;
       }
+
+      if (window.confirm(`Xác nhận khôi phục dữ liệu từ tệp?\n\n📊 Tóm tắt:\n${summary}\n\nDữ liệu hiện tại sẽ được thay thế bằng dữ liệu trong tệp.`)) {
+        if (data.classInfo) setClassInfo(data.classInfo as ClassInfo);
+        if (Array.isArray(data.timetableSlots)) setTimetableSlots(data.timetableSlots as TimetableSlot[]);
+        if (Array.isArray(data.lessons)) setLessons(data.lessons as Lesson[]);
+        if (Array.isArray(data.lessonPlans)) setLessonPlans(data.lessonPlans as LessonPlan[]);
+        if (Array.isArray(data.studyRecords)) setStudyRecords(data.studyRecords as StudyRecord[]);
+        if (Array.isArray(data.documents)) setDocuments(data.documents as DocumentItem[]);
+        if (Array.isArray(data.periods)) setPeriods(data.periods as PeriodInfo[]);
+        if (data.family && typeof data.family === 'object') {
+          setFamily(data.family as FamilyAccount);
+          if (Array.isArray(data.family.children) && data.family.children.length > 0) {
+            setActiveChildProfile(data.family.children[0]);
+          }
+        }
+
+        setLastBackupTimestamp();
+        refreshBackupStatus();
+        alert('🎉 Đã khôi phục dữ liệu học tập thành công!');
+      }
+
+      // Reset input value so user can upload same file again if needed
+      e.target.value = '';
     };
     reader.readAsText(file);
   };
@@ -1013,6 +1204,112 @@ export default function App() {
       setShowParentPin(true);
     }
   };
+
+  // ----------------- DEMO 10-MINUTE SESSION CONTROLLER -----------------
+  // Start a fresh 10-minute trial session with default sample data
+  const startDemoSession = () => {
+    const durationSeconds = 10 * 60; // 10 minutes = 600s
+    const expiresAt = Date.now() + durationSeconds * 1000;
+
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}demo_expires_at`, expiresAt.toString());
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}is_guest`, 'true');
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Reset everything to sample dataset
+    const currentMonday = getVietnamCurrentMondayStr();
+    setClassInfo({
+      ...INITIAL_CLASS_INFO,
+      studentName: 'Học viên Trải nghiệm',
+      className: 'Lớp 10A1',
+      weekStartDate: currentMonday,
+    });
+    setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
+    setLessons(INITIAL_LESSONS_BANK);
+    setDocuments(INITIAL_DOCUMENTS);
+    const plans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
+    setLessonPlans(plans);
+    setStudyRecords(generateInitialStudyRecords(plans, 'Học viên Trải nghiệm'));
+
+    const demoGuestChild: ChildProfile = {
+      id: 'demo_guest_student',
+      name: 'Học viên Trải nghiệm',
+      grade: '10',
+      className: 'Lớp 10A1',
+      avatar: '🚀',
+      studentCode: 'DEMO10',
+    };
+
+    setActiveChildProfile(demoGuestChild);
+    setIsGuestMode(true);
+    setDemoTimeRemaining(durationSeconds);
+    setCurrentRole('student');
+    setIsIntroOpen(false);
+  };
+
+  // Reset and Exit Demo -> Back to clean Intro and pristine default data
+  const handleResetAndExitDemo = (showExpiredAlert = false) => {
+    try {
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
+      localStorage.removeItem('mindmap_remembered_student_id');
+    } catch (e) {
+      console.error(e);
+    }
+
+    // Revert all internal state to clean defaults
+    const currentMonday = getVietnamCurrentMondayStr();
+    setClassInfo({
+      ...INITIAL_CLASS_INFO,
+      weekStartDate: currentMonday,
+    });
+    setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
+    setLessons(INITIAL_LESSONS_BANK);
+    setDocuments(INITIAL_DOCUMENTS);
+    const plans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
+    setLessonPlans(plans);
+    setStudyRecords(generateInitialStudyRecords(plans, INITIAL_CLASS_INFO.studentName));
+
+    setIsGuestMode(false);
+    setDemoTimeRemaining(null);
+    setActiveChildProfile(family.children[0] || null);
+    setIsIntroOpen(true);
+
+    if (showExpiredAlert) {
+      setShowDemoExpiredModal(true);
+    }
+  };
+
+  // 10-Minute Demo countdown tick
+  useEffect(() => {
+    if (demoTimeRemaining === null || isIntroOpen) return;
+
+    const timer = setInterval(() => {
+      try {
+        const expiresStr = localStorage.getItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
+        if (!expiresStr) {
+          setDemoTimeRemaining(null);
+          return;
+        }
+        const expiresAt = parseInt(expiresStr, 10);
+        const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
+
+        if (remaining <= 0) {
+          clearInterval(timer);
+          setDemoTimeRemaining(0);
+          handleResetAndExitDemo(true);
+        } else {
+          setDemoTimeRemaining(remaining);
+        }
+      } catch {
+        setDemoTimeRemaining((prev) => (prev && prev > 1 ? prev - 1 : 0));
+      }
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [demoTimeRemaining, isIntroOpen]);
 
   const handleSelectChild = (child: ChildProfile) => {
     setActiveChildProfile(child);
@@ -1189,8 +1486,10 @@ export default function App() {
         family={family}
         onUpdateFamily={(updated) => {
           setFamily(updated);
+          saveSafeItem(`${STORAGE_KEY_PREFIX}family_account`, updated);
         }}
         onSelectChild={(child) => {
+          setIsGuestMode(false);
           setActiveChildProfile(child);
           const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
           const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
@@ -1204,27 +1503,18 @@ export default function App() {
           setCurrentRole('student');
           setIsIntroOpen(false);
         }}
-        onStudentLoginSuccess={(parentUserId, familyData, child) => {
-          setStudentParentUserId(parentUserId);
-          try {
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}student_parent_uid`, parentUserId);
-          } catch {}
-          setFamily(familyData);
-          setActiveChildProfile(child);
-          const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
-          const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
-            ? rawGrade
-            : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
-          setClassInfo((prev) => ({
-            ...prev,
-            studentName: child.name,
-            className: finalClass,
-          }));
-          setCurrentRole('student');
-          setIsIntroOpen(false);
-        }}
-        onAddChild={(newChild) => {
-          // Handled via onUpdateFamily and onSelectChild inside RegistrationIntro
+        onAddChild={(newChildData) => {
+          const newChild: ChildProfile = {
+            ...newChildData,
+            id: 'child_' + Date.now().toString(),
+          };
+          const updatedFamily: FamilyAccount = {
+            ...family,
+            children: [...family.children, newChild],
+          };
+          setFamily(updatedFamily);
+          saveSafeItem(`${STORAGE_KEY_PREFIX}family_account`, updatedFamily);
+          setActiveChildProfile(newChild);
         }}
         onSelectParent={() => {
           setActiveChildProfile(null);
@@ -1234,7 +1524,10 @@ export default function App() {
           }));
           setCurrentRole('admin');
           setIsIntroOpen(false);
+          setShowParentDashboard(true);
         }}
+        onImportBackupData={handleImportData}
+        onStartDemo={startDemoSession}
       />
     );
   }
@@ -1242,6 +1535,36 @@ export default function App() {
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans transition-colors">
       
+      {/* ⏱️ 10-Minute Demo Mode Live Floating Bar */}
+      {demoTimeRemaining !== null && (
+        <div className="bg-amber-400 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xs sticky top-0 z-50 border-b border-amber-500/50">
+          <div className="flex items-center gap-2">
+            <span className="flex h-2.5 w-2.5 relative">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-900 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-900"></span>
+            </span>
+            <span>
+              ⏱️ Chế độ Trải nghiệm nhanh: Còn lại{' '}
+              <span className="font-mono text-sm bg-amber-500/40 px-1.5 py-0.5 rounded text-slate-950 font-black">
+                {String(Math.floor(demoTimeRemaining / 60)).padStart(2, '0')}:
+                {String(demoTimeRemaining % 60).padStart(2, '0')}
+              </span>
+            </span>
+            <span className="hidden sm:inline text-amber-950/80 font-medium">
+              • Tự động đặt lại dữ liệu gốc sau 10 phút.
+            </span>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => handleResetAndExitDemo(false)}
+            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-950 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
+          >
+            <span>Thoát & Đặt lại</span>
+          </button>
+        </div>
+      )}
+
       {/* Hidden File Input for Data Restore */}
       <input 
         type="file" 
@@ -1267,9 +1590,17 @@ export default function App() {
         onExportData={handleExportData}
         onImportData={handleImportData}
         onResetAllData={handleResetAllData}
-        onSwitchProfile={() => setIsIntroOpen(true)}
+        onSwitchProfile={() => {
+          try {
+            localStorage.removeItem('mindmap_remembered_student_id');
+          } catch {}
+          setIsIntroOpen(true);
+        }}
         onLogout={() => {
-          signOut().then(() => setIsIntroOpen(true));
+          try {
+            localStorage.removeItem('mindmap_remembered_student_id');
+          } catch {}
+          setIsIntroOpen(true);
         }}
         currentChildAvatar={activeChildProfile?.avatar}
         onShareReport={captureTimetable}
@@ -1285,6 +1616,11 @@ export default function App() {
         activeChildProfile={activeChildProfile}
         onSelectChild={handleSelectChild}
         onSelectParent={handleSwitchToParent}
+        isGuestMode={isGuestMode}
+        onOpenCloudSync={() => setShowAccountLinkingModal(true)}
+        backupStatus={backupStatus}
+        onOpenBackupReminder={() => setShowBackupReminderModal(true)}
+        onOpenFamilyCodeCard={() => setShowFamilyCodeModal(true)}
         onSelectTab={(tab) => {
           if (tab === 'mindmap_gallery') {
             setIsGalleryOpen(true);
@@ -1677,6 +2013,122 @@ export default function App() {
         <AboutStoryModal
           onClose={() => setShowAboutStory(false)}
         />
+      )}
+
+      {/* Modal: Account Linking (Guest Mode -> Google Cloud Sync) */}
+      {showAccountLinkingModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
+          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
+            <div className="flex items-center gap-3">
+              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl border border-amber-200 shrink-0">
+                ☁️
+              </div>
+              <div>
+                <h3 className="text-base md:text-lg font-black text-slate-800">
+                  Lưu thời khóa biểu lên Google
+                </h3>
+                <p className="text-xs text-slate-500">
+                  Chuyển từ Tài khoản Khách sang Đám mây vĩnh viễn
+                </p>
+              </div>
+            </div>
+
+            <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 text-xs text-slate-700 space-y-2">
+              <div className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">✓</span>
+                <span>Toàn bộ thời khóa biểu, môn học, sơ đồ tư duy đã soạn sẽ <strong>được giữ nguyên 100%</strong>.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">✓</span>
+                <span>Mở xem và chỉnh sửa dễ dàng trên điện thoại, máy tính bảng hay máy tính khác.</span>
+              </div>
+              <div className="flex items-start gap-2">
+                <span className="text-blue-600 font-bold">✓</span>
+                <span>An tâm không lo mất dữ liệu nếu lỡ dọn dẹp trình duyệt.</span>
+              </div>
+            </div>
+
+            {linkingError && (
+              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 leading-relaxed">
+                {linkingError}
+              </div>
+            )}
+
+            <div className="flex flex-col gap-2 pt-1">
+              <button
+                type="button"
+                disabled={isLinkingAccount}
+                onClick={handleExecuteAccountLinking}
+                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isLinkingAccount ? (
+                  <span>Đang kết nối Google...</span>
+                ) : (
+                  <>
+                    <svg viewBox="0 0 24 24" className="w-5 h-5">
+                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                    </svg>
+                    <span>Tiếp tục với Google để Lưu</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowAccountLinkingModal(false)}
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-all cursor-pointer"
+              >
+                Để sau (Tiếp tục dùng trên máy này)
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal: Local-First Smart Backup Reminder */}
+      <BackupReminderModal
+        isOpen={showBackupReminderModal}
+        onClose={() => setShowBackupReminderModal(false)}
+        onExecuteExport={handleExportData}
+        unsavedCount={backupStatus.unsavedCount}
+        daysSinceLastBackup={backupStatus.daysSinceLastBackup}
+        lastBackupDateStr={backupStatus.lastBackupDateStr}
+        studentName={classInfo.studentName || 'Học sinh'}
+        className={classInfo.className || 'Lớp học'}
+      />
+
+      {/* Modal: Family Code & Login Card for Children */}
+      <FamilyCodeCardModal
+        isOpen={showFamilyCodeModal}
+        onClose={() => setShowFamilyCodeModal(false)}
+        family={family}
+      />
+
+      {/* Modal: Demo 10 Minutes Expired Notification */}
+      {showDemoExpiredModal && (
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-3xl mx-auto mb-4 font-bold shadow-xs">
+              ⏱️
+            </div>
+            <h3 className="text-base font-bold text-slate-900 mb-2">
+              Hết thời gian trải nghiệm nhanh!
+            </h3>
+            <p className="text-xs text-slate-600 leading-relaxed mb-5">
+              Phiên trải nghiệm demo <b>10 phút</b> đã kết thúc. Toàn bộ dữ liệu tạm thời đã được tự động làm mới và đặt lại mặc định an toàn.
+            </p>
+            <button
+              type="button"
+              onClick={() => setShowDemoExpiredModal(false)}
+              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
+            >
+              Đã hiểu & Về màn hình chính
+            </button>
+          </div>
+        </div>
       )}
 
     </div>

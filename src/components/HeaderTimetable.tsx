@@ -16,7 +16,10 @@ import {
   LogOut,
   ChevronDown,
   Share2,
-  Loader2
+  Loader2,
+  Download,
+  Upload,
+  ShieldCheck
 } from 'lucide-react';
 
 interface HeaderTimetableProps {
@@ -53,6 +56,16 @@ interface HeaderTimetableProps {
   activeChildProfile: ChildProfile | null;
   onSelectChild: (child: ChildProfile) => void;
   onSelectParent: () => void;
+  isGuestMode?: boolean;
+  onOpenCloudSync?: () => void;
+  backupStatus?: {
+    status: 'fresh' | 'pending' | 'warning';
+    daysSinceLastBackup: number;
+    unsavedCount: number;
+    lastBackupDateStr: string;
+  };
+  onOpenBackupReminder?: () => void;
+  onOpenFamilyCodeCard?: () => void;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -83,7 +96,15 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   activeChildProfile,
   onSelectChild,
   onSelectParent,
+  isGuestMode,
+  onOpenCloudSync,
+  onExportData,
+  onImportData,
+  backupStatus,
+  onOpenBackupReminder,
+  onOpenFamilyCodeCard,
 }) => {
+  const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isEditingClass, setIsEditingClass] = useState(false);
@@ -315,8 +336,85 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
         )}
 
         {/* Right: Switch Profile & Parent Zone */}
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
           
+          {/* LOCAL-FIRST: NÚT XUẤT SAO LƯU DỮ LIỆU */}
+          {onExportData && (
+            <button
+              type="button"
+              onClick={onExportData}
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 ${
+                backupStatus?.status === 'warning'
+                  ? 'bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 animate-pulse'
+                  : backupStatus?.status === 'pending'
+                  ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
+                  : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+              }`}
+              title={
+                backupStatus?.status === 'warning'
+                  ? `⚠️ Cần tải file sao lưu! Có ${backupStatus.unsavedCount} mục mới chưa export hoặc lâu chưa tải file.`
+                  : backupStatus?.status === 'pending'
+                  ? `💡 Có ${backupStatus.unsavedCount} thay đổi mới. Bấm để tải file sao lưu về máy!`
+                  : `✓ Dữ liệu đã được sao lưu an toàn (${backupStatus?.lastBackupDateStr || 'Mới nhất'})`
+              }
+            >
+              <Download className="w-3.5 h-3.5 text-current shrink-0" />
+              <span className="hidden md:inline">Tải Sao Lưu</span>
+              {backupStatus && (
+                <span className={`w-2 h-2 rounded-full shrink-0 ${
+                  backupStatus.status === 'warning'
+                    ? 'bg-red-500 ring-2 ring-red-300'
+                    : backupStatus.status === 'pending'
+                    ? 'bg-amber-500'
+                    : 'bg-emerald-500'
+                }`} />
+              )}
+              {backupStatus && backupStatus.unsavedCount > 0 && (
+                <span className="text-[10px] bg-amber-200 dark:bg-amber-800 text-amber-950 dark:text-amber-100 px-1 rounded-full font-black">
+                  +{backupStatus.unsavedCount}
+                </span>
+              )}
+            </button>
+          )}
+
+          {/* LOCAL-FIRST: NÚT KHÔI PHỤC DỮ LIỆU */}
+          {onImportData && (
+            <>
+              <input
+                type="file"
+                ref={fileInputRef}
+                accept=".json"
+                onChange={onImportData}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                title="Khôi phục thời khóa biểu và dữ liệu học tập từ file sao lưu .json"
+              >
+                <Upload className="w-3.5 h-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
+                <span className="hidden md:inline">Khôi Phục Data</span>
+              </button>
+            </>
+          )}
+
+          {/* Guest Mode Cloud Sync Pill */}
+          {isGuestMode && onOpenCloudSync && (
+            <button
+              type="button"
+              onClick={onOpenCloudSync}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 group"
+              title="Dữ liệu đang lưu tạm trên máy này. Bấm để đồng bộ lưu vĩnh viễn lên Google!"
+            >
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <span className="hidden sm:inline font-bold">Khách</span>
+              <span className="text-[11px] bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded font-black flex items-center gap-1">
+                ☁️ Lưu Google
+              </span>
+            </button>
+          )}
+
           {/* Unified Profile Switcher Dropdown */}
           <div className="relative">
             <button
@@ -338,6 +436,30 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
               <>
                 <div className="fixed inset-0 z-40" onClick={() => setIsProfileMenuOpen(false)} />
                 <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden z-50 p-4">
+                  
+                  {/* Guest Notice */}
+                  {isGuestMode && onOpenCloudSync && (
+                    <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-left">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
+                        <span>🎮</span>
+                        <span>Đang dùng Chế độ Khách</span>
+                      </div>
+                      <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
+                        Thời khóa biểu đang lưu an toàn trên máy này. Bấm nút dưới để đồng bộ lên Google khi cần.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onOpenCloudSync();
+                        }}
+                        className="mt-2 w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
+                      >
+                        <span>☁️ Lưu dữ liệu lên Google</span>
+                      </button>
+                    </div>
+                  )}
+
                   <div className="text-center pb-2 border-b border-slate-100 dark:border-slate-800/80">
                     <h4 className="font-extrabold text-[11px] text-slate-400 uppercase tracking-wider">Thành viên gia đình</h4>
                   </div>
@@ -431,6 +553,88 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Local-First Backup Section */}
+                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-left space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] font-bold">
+                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-200">
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
+                        Sao lưu cục bộ (Local-First):
+                      </span>
+                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${
+                        backupStatus?.status === 'warning'
+                          ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300'
+                          : backupStatus?.status === 'pending'
+                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
+                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
+                      }`}>
+                        {backupStatus?.status === 'warning'
+                          ? '⚠️ Cần tải backup'
+                          : backupStatus?.status === 'pending'
+                          ? '💡 Có mục mới'
+                          : '✓ Đã an toàn'}
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
+                      <span>Lần tải gần nhất:</span>
+                      <span className="font-semibold text-slate-700 dark:text-slate-300">
+                        {backupStatus?.lastBackupDateStr || 'Chưa lưu'}
+                      </span>
+                    </div>
+                    <div className="grid grid-cols-2 gap-1.5 pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onExportData?.();
+                        }}
+                        className="py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                      >
+                        <Download className="w-3 h-3" />
+                        <span>Tải file .json</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          fileInputRef.current?.click();
+                        }}
+                        className="py-1 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
+                      >
+                        <Upload className="w-3 h-3" />
+                        <span>Khôi phục file</span>
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Switch Account or Re-login option */}
+                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1 text-center">
+                    {onOpenFamilyCodeCard && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onOpenFamilyCodeCard();
+                        }}
+                        className="w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors cursor-pointer flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800"
+                      >
+                        <span>🔑 Xem Thẻ Đăng Nhập Cho Con</span>
+                      </button>
+                    )}
+
+                    {onSwitchProfile && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsProfileMenuOpen(false);
+                          onSwitchProfile();
+                        }}
+                        className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer inline-flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
+                      >
+                        <span>🔄 Chuyển tài khoản / Đổi máy</span>
+                      </button>
+                    )}
                   </div>
                 </div>
               </>

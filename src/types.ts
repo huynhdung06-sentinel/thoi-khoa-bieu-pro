@@ -6,13 +6,17 @@ export interface ChildProfile {
   grade?: number | string; // 6, 7, 8, 9, or "Lớp 10A1", "Sinh viên Năm 2"
   className?: string; // e.g. "9A1", "Kỹ thuật phần mềm"
   avatar: string; // emoji icon e.g. "🚀", "🐱", "🦁", "🦊", "⭐", "🦄", "⚽", "🎮", "📚"
-  studentCode?: string; // Mã kết nối riêng biệt cho con (do phụ huynh tạo, vd: 123456 hoặc AN8899)
+  studentCode?: string; // Mã kết nối riêng biệt cho con (vd: AN01, 1234)
+  pin?: string; // Mã PIN riêng của bé (tùy chọn)
 }
 
 export interface FamilyAccount {
+  familyCode?: string; // Mã Gia Đình chung (6-8 ký tự, vd: GD8899)
   parentName: string;
-  parentPin: string;
+  parentPin: string; // Mật khẩu Phụ huynh (4-8 ký tự)
   parentEmail?: string;
+  securityQuestion?: string; // Câu hỏi bảo mật khi quên mật khẩu
+  securityAnswer?: string; // Câu trả lời bảo mật
   children: ChildProfile[];
 }
 

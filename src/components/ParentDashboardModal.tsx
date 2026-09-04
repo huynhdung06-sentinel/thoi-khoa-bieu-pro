@@ -14,8 +14,12 @@ import {
   AlertCircle, 
   Check, 
   Eye,
+  EyeOff,
   Key,
-  Copy
+  Copy,
+  Dices,
+  HelpCircle,
+  FileJson
 } from 'lucide-react';
 import { ChildProfile, FamilyAccount } from '../types';
 
@@ -41,6 +45,15 @@ const GRADE_PRESETS = [
   'Sinh viên Năm 1', 'Sinh viên', 'Đại học'
 ];
 
+const DEFAULT_SECURITY_QUESTIONS = [
+  'Năm sinh của Mẹ (hoặc Bố)?',
+  'Tên trường tiểu học đầu tiên của con?',
+  'Tên thú cưng hoặc con vật yêu thích của gia đình?',
+  'Món ăn yêu thích nhất của gia đình vào cuối tuần?',
+  'Biệt danh thuở nhỏ của con?',
+  'Thành phố hoặc quê hương nơi gia đình từng đi du lịch cùng nhau?'
+];
+
 export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({ 
   onClose, 
   onExitParentMode, 
@@ -54,10 +67,18 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   onExportData,
   onImportData
 }) => {
-  // Parent Name & PIN editing
+  // Parent Name, Password & Family Code editing
   const [parentName, setParentName] = useState(family.parentName || 'Bố Mẹ');
   const [parentPin, setParentPin] = useState(family.parentPin || '');
+  const [familyCode, setFamilyCode] = useState(family.familyCode || '');
+  const [securityQuestion, setSecurityQuestion] = useState(
+    family.securityQuestion || DEFAULT_SECURITY_QUESTIONS[0]
+  );
+  const [securityAnswer, setSecurityAnswer] = useState(family.securityAnswer || '');
+  const [showPassword, setShowPassword] = useState(false);
+
   const [pinChangeMsg, setPinChangeMsg] = useState('');
+  const [settingError, setSettingError] = useState('');
   const [copiedChildId, setCopiedChildId] = useState<string | null>(null);
 
   // Editing existing child modal state
@@ -79,24 +100,40 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const [newStudentCode, setNewStudentCode] = useState('');
   const [addError, setAddError] = useState('');
 
-  // Save parent info (Name + PIN)
+  // Random Family Code Generator (6-8 chars)
+  const handleGenerateFamilyCode = () => {
+    const num = Math.floor(100000 + Math.random() * 900000);
+    setFamilyCode(String(num));
+  };
+
+  // Save parent info (Name + Password + Family Code + Security Question)
   const handleSaveParentInfo = () => {
+    setSettingError('');
     if (!parentName.trim()) {
-      alert('Vui lòng nhập tên hiển thị cho phụ huynh!');
+      setSettingError('Vui lòng nhập tên hiển thị cho phụ huynh!');
       return;
     }
-    if (!parentPin || parentPin.length < 4) {
-      alert('Mã PIN cần ít nhất 4 chữ số!');
+    if (!parentPin || parentPin.length < 4 || parentPin.length > 8) {
+      setSettingError('Mật khẩu phụ huynh phải từ 4 đến 8 ký tự!');
       return;
     }
+    const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode || cleanCode.length < 6 || cleanCode.length > 8) {
+      setSettingError('Mã gia đình bắt buộc phải có từ 6 đến 8 ký tự chữ cái hoặc chữ số!');
+      return;
+    }
+
     const updated: FamilyAccount = {
       ...family,
       parentName: parentName.trim(),
       parentPin: parentPin.trim(),
+      familyCode: cleanCode,
+      securityQuestion: securityQuestion.trim(),
+      securityAnswer: securityAnswer.trim(),
     };
     onUpdateFamily(updated);
-    setPinChangeMsg('Đã lưu thông tin phụ huynh và mã PIN mới!');
-    setTimeout(() => setPinChangeMsg(''), 3000);
+    setPinChangeMsg('Đã lưu thành công thông tin phụ huynh, mã gia đình và mật khẩu bảo mật!');
+    setTimeout(() => setPinChangeMsg(''), 3500);
   };
 
   // Open Edit Child
@@ -366,11 +403,11 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
             </div>
           </section>
 
-          {/* SECTION 2: BẢO VỆ MÃ PIN VÀ TÊN PHỤ HUYNH */}
+          {/* SECTION 2: BẢO VỆ MẬT KHẨU VÀ TÊN PHỤ HUYNH */}
           <section className="space-y-3.5 border-t border-slate-100 pt-5">
             <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base">
               <KeyRound className="w-4 h-4 text-purple-600" />
-              <span>Cài đặt Phụ huynh & Mã PIN bảo mật</span>
+              <span>Cài đặt Phụ huynh & Mật khẩu bảo mật</span>
             </h4>
 
             {pinChangeMsg && (
@@ -380,38 +417,122 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
               </div>
             )}
 
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 bg-slate-50 p-3.5 rounded-2xl border border-slate-200">
+            {settingError && (
+              <div className="p-3 bg-red-50 border border-red-200 text-red-700 text-xs font-bold rounded-xl flex items-center gap-2">
+                <AlertCircle className="w-4 h-4 text-red-500 shrink-0" />
+                <span>{settingError}</span>
+              </div>
+            )}
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 bg-slate-50 p-4 rounded-2xl border border-slate-200">
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Tên hiển thị của Bố/Mẹ</label>
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Tên hiển thị của Bố/Mẹ:
+                </label>
                 <input 
                   type="text"
                   value={parentName}
                   onChange={(e) => setParentName(e.target.value)}
-                  placeholder="Ví dụ: Bố Minh, Mẹ Thảo, Phụ huynh..."
+                  placeholder="Ví dụ: Ba Nam / Mẹ Hương..."
                   className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-semibold text-slate-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
                 />
               </div>
 
               <div>
-                <label className="text-xs font-bold text-slate-600 block mb-1">Mã PIN bí mật (ít nhất 4 số)</label>
-                <input 
+                <label className="text-xs font-bold text-slate-700 block mb-1">
+                  Mật khẩu Phụ Huynh (4-8 ký tự):
+                </label>
+                <div className="relative">
+                  <input 
+                    type={showPassword ? 'text' : 'password'}
+                    value={parentPin}
+                    maxLength={8}
+                    onChange={(e) => setParentPin(e.target.value)}
+                    placeholder="Nhập 4-8 ký tự"
+                    className="w-full px-3 py-2 pr-10 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold tracking-wider text-slate-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                  >
+                    {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                  </button>
+                </div>
+              </div>
+
+              {/* Family Code field with Random button */}
+              <div className="sm:col-span-2">
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700">
+                    Mã Gia Đình (6 - 8 ký tự):
+                  </label>
+                  <button
+                    type="button"
+                    onClick={handleGenerateFamilyCode}
+                    className="text-[11px] text-purple-600 hover:text-purple-800 font-bold flex items-center gap-1 cursor-pointer"
+                  >
+                    <Dices className="w-3.5 h-3.5" />
+                    <span>Tạo mã mới</span>
+                  </button>
+                </div>
+                <div className="relative">
+                  <input 
+                    type="text"
+                    value={familyCode}
+                    maxLength={8}
+                    onChange={(e) => {
+                      const clean = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
+                      setFamilyCode(clean);
+                    }}
+                    placeholder="VD: GD8899"
+                    className="w-full px-3 py-2 pr-16 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-mono font-bold uppercase tracking-wider text-slate-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                  />
+                  <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
+                    familyCode.length >= 6 && familyCode.length <= 8
+                      ? 'bg-emerald-100 text-emerald-700'
+                      : 'bg-amber-100 text-amber-700'
+                  }`}>
+                    {familyCode.length}/8
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-400 mt-1">
+                  Con nhập mã gia đình này trên điện thoại/máy tính khác để tải thời khóa biểu dùng chung.
+                </p>
+              </div>
+
+              {/* Security Question Setup */}
+              <div className="sm:col-span-2 p-3 bg-white border border-slate-200 rounded-xl space-y-2">
+                <div className="flex items-center gap-1.5 text-slate-700 font-bold text-xs">
+                  <ShieldCheck className="w-4 h-4 text-purple-600" />
+                  <span>Câu hỏi bảo mật (Dùng khi quên mật khẩu):</span>
+                </div>
+                <select
+                  value={securityQuestion}
+                  onChange={(e) => setSecurityQuestion(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-slate-50 text-xs text-slate-700 outline-hidden font-medium"
+                >
+                  {DEFAULT_SECURITY_QUESTIONS.map((q, idx) => (
+                    <option key={idx} value={q}>{q}</option>
+                  ))}
+                </select>
+                <input
                   type="text"
-                  value={parentPin}
-                  maxLength={6}
-                  onChange={(e) => setParentPin(e.target.value.replace(/\D/g, ''))}
-                  placeholder="Ví dụ: 1234, 8888..."
-                  className="w-full px-3 py-2 bg-white border border-slate-200 rounded-xl text-xs sm:text-sm font-bold tracking-widest text-slate-800 outline-hidden focus:border-purple-500 focus:ring-1 focus:ring-purple-500"
+                  placeholder="Nhập câu trả lời bí mật..."
+                  value={securityAnswer}
+                  onChange={(e) => setSecurityAnswer(e.target.value)}
+                  className="w-full px-2.5 py-2 rounded-lg border border-slate-200 bg-white text-xs outline-hidden"
                 />
               </div>
 
-              <div className="sm:col-span-2 flex justify-end">
+              <div className="sm:col-span-2 flex justify-end pt-1">
                 <button
                   type="button"
                   onClick={handleSaveParentInfo}
-                  className="px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
+                  className="px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white font-bold rounded-xl text-xs transition-colors flex items-center gap-1.5 shadow-xs cursor-pointer"
                 >
-                  <CheckCircle2 className="w-3.5 h-3.5" />
-                  <span>Lưu thông tin Phụ huynh</span>
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Lưu cài đặt Phụ huynh</span>
                 </button>
               </div>
             </div>
