@@ -6,12 +6,28 @@
       "type": "object",
       "properties": {
         "parentName": { "type": "string", "maxLength": 100 },
-        "parentPin": { "type": "string", "maxLength": 6 },
+        "parentPin": { "type": "string", "maxLength": 8 },
         "ownerId": { "type": "string", "maxLength": 128 },
         "createdAt": { "type": "string", "format": "timestamp" },
         "updatedAt": { "type": "string", "format": "timestamp" }
       },
       "required": ["parentName", "parentPin", "ownerId", "createdAt", "updatedAt"]
+    },
+    "FamilyCodeAccount": {
+      "title": "Family By Code Account",
+      "description": "Cloud-synced family account indexed by family code for cross-device sharing",
+      "type": "object",
+      "properties": {
+        "familyCode": { "type": "string", "maxLength": 12 },
+        "parentName": { "type": "string", "maxLength": 100 },
+        "parentPin": { "type": "string", "maxLength": 8 },
+        "parentEmail": { "type": "string", "maxLength": 150 },
+        "securityQuestion": { "type": "string", "maxLength": 200 },
+        "securityAnswer": { "type": "string", "maxLength": 200 },
+        "children": { "type": "array" },
+        "updatedAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["familyCode", "parentName", "parentPin", "children"]
     },
     "ChildProfile": {
       "title": "Child Profile",
@@ -56,6 +72,14 @@
     "families/{familyId}/children/{childId}/data/appState": {
       "schema": "ChildData",
       "description": "Stores the entire app state for a child profile."
+    },
+    "families_by_code/{familyCode}": {
+      "schema": "FamilyCodeAccount",
+      "description": "Stores family data indexed by family code for cross-device instant sync."
+    },
+    "families_by_code/{familyCode}/children_data/{childId}": {
+      "schema": "ChildData",
+      "description": "Stores app state per child indexed by family code."
     }
   }
 }

@@ -26,7 +26,19 @@ import {
 } from './data/mockData';
 import { getVietnamCurrentMondayStr, getVietnamTodayString, getTodayVietnamInfo } from './utils/dateUtils';
 import { saveSafeItem, setLocalStorageItemSafe, getSafeItemAsync, getSafeItemSync, clearProfileStorage } from './utils/safeStorage';
-import { getChildData, saveChildData, auth, signOut, signInWithGoogle, createFamilyAccount, createChildProfile } from './lib/firebase';
+import { 
+  getChildData, 
+  saveChildData, 
+  auth, 
+  signOut, 
+  signInWithGoogle, 
+  createFamilyAccount, 
+  createChildProfile,
+  syncFamilyByCodeToCloud,
+  fetchFamilyByCodeFromCloud,
+  syncChildDataByCodeToCloud,
+  fetchChildDataByCodeFromCloud
+} from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
 import { ShareModal } from './components/ShareModal';
@@ -111,7 +123,34 @@ export default function App() {
     if (family.parentPin) {
       setParentPinToStorage(family.parentPin);
     }
+    if (family.familyCode) {
+      syncFamilyByCodeToCloud(family).catch(err => console.error('Cloud family sync error:', err));
+    }
   }, [family]);
+
+  // Sync latest family data from Cloud on startup
+  useEffect(() => {
+    let isCancelled = false;
+    const checkCloudFamily = async () => {
+      try {
+        const rememberedCode = localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
+        if (rememberedCode) {
+          const cloudFam = await fetchFamilyByCodeFromCloud(rememberedCode);
+          if (!isCancelled && cloudFam) {
+            setFamily(prev => ({
+              ...prev,
+              ...cloudFam,
+              children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
+            }));
+          }
+        }
+      } catch (err) {
+        console.error('Error fetching initial cloud family:', err);
+      }
+    };
+    checkCloudFamily();
+    return () => { isCancelled = true; };
+  }, []);
 
   // Active child profile & Auto-login for remembered device
   const [activeChildProfile, setActiveChildProfile] = useState<ChildProfile | null>(() => {
@@ -301,7 +340,7 @@ export default function App() {
 
   // Profile Hydration Effect (Isolation of Schedules & Study Data)
   useEffect(() => {
-    if (!activeChildProfile || !effectiveUserId) {
+    if (!activeChildProfile) {
       setIsHydrated(true);
       return;
     }
@@ -313,7 +352,13 @@ export default function App() {
       setIsHydrated(false);
 
       try {
-        const firebaseData = await getChildData(effectiveUserId, id);
+        let firebaseData = null;
+        if (effectiveUserId) {
+          firebaseData = await getChildData(effectiveUserId, id);
+        }
+        if (!firebaseData && family.familyCode) {
+          firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
+        }
         
         if (!isMounted) return;
 
@@ -363,15 +408,15 @@ export default function App() {
 
     hydrateChildData();
     return () => { isMounted = false; };
-  }, [activeChildProfile?.id, effectiveUserId]);
+  }, [activeChildProfile?.id, effectiveUserId, family.familyCode]);
 
-  // Child-specific Save Effects to Firebase
+  // Child-specific Save Effects to Firebase & Cloud by Family Code
   useEffect(() => {
-    if (isHydratingRef.current || !isHydrated || !activeChildProfile || !effectiveUserId) return;
+    if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
     
     // Create a debounce timer to avoid too many writes
     const timer = setTimeout(() => {
-      saveChildData(effectiveUserId, activeChildProfile.id, {
+      const payload = {
         classInfo,
         subjects,
         timetableSlots,
@@ -380,11 +425,18 @@ export default function App() {
         studyRecords,
         documents,
         periods
-      }).catch(console.error);
+      };
+
+      if (effectiveUserId) {
+        saveChildData(effectiveUserId, activeChildProfile.id, payload).catch(console.error);
+      }
+      if (family.familyCode) {
+        syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload).catch(console.error);
+      }
     }, 1500);
     
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, isHydrated, effectiveUserId]);
+  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, isHydrated, effectiveUserId, family.familyCode]);
 
   const [isEditPeriodsOpen, setIsEditPeriodsOpen] = useState(false);
 

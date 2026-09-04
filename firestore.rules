@@ -14,7 +14,7 @@ service cloud.firestore {
       return data.keys().hasAll(['parentName', 'parentPin', 'ownerId', 'createdAt', 'updatedAt'])
         && data.keys().size() == 5
         && data.parentName is string && data.parentName.size() <= 100
-        && data.parentPin is string && data.parentPin.size() <= 6
+        && data.parentPin is string && data.parentPin.size() <= 8
         && data.ownerId == request.auth.uid
         && data.createdAt == request.time
         && data.updatedAt == request.time;
@@ -22,7 +22,7 @@ service cloud.firestore {
 
     function isValidFamilyAccountUpdate(data) {
       return data.parentName is string && data.parentName.size() <= 100
-        && data.parentPin is string && data.parentPin.size() <= 6
+        && data.parentPin is string && data.parentPin.size() <= 8
         && data.ownerId == request.auth.uid
         && data.updatedAt == request.time;
     }
@@ -80,6 +80,22 @@ service cloud.firestore {
             && familyId == request.auth.uid
             && incoming().updatedAt == request.time;
         }
+      }
+    }
+
+    // Cloud Family Sync via Family Code (Cross-Device Instant Access)
+    match /families_by_code/{familyCode} {
+      allow read: if true;
+      allow create, update: if familyCode is string 
+        && familyCode.size() >= 4 
+        && familyCode.size() <= 12
+        && incoming().familyCode is string
+        && incoming().parentName is string
+        && incoming().parentPin is string;
+      allow delete: if false;
+
+      match /children_data/{childId} {
+        allow read, write: if true;
       }
     }
   }

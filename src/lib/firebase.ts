@@ -225,3 +225,99 @@ export const getChildData = async (userId: string, childId: string) => {
   }
   return null;
 };
+
+// ----------------- CLOUD SYNC BY FAMILY CODE (Cross-device instant sync) -----------------
+
+export const syncFamilyByCodeToCloud = async (family: FamilyAccount): Promise<boolean> => {
+  try {
+    const rawCode = family.familyCode || '';
+    const cleanCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode || cleanCode.length < 4) return false;
+
+    const famRef = doc(db, 'families_by_code', cleanCode);
+    const cleanPayload = removeUndefined({
+      familyCode: cleanCode,
+      parentName: (family.parentName || 'Phụ Huynh').trim(),
+      parentPin: (family.parentPin || '1234').trim(),
+      parentEmail: (family.parentEmail || '').toLowerCase().trim(),
+      securityQuestion: family.securityQuestion || '',
+      securityAnswer: (family.securityAnswer || '').trim(),
+      children: Array.isArray(family.children) ? family.children.map(c => ({
+        id: c.id,
+        name: c.name,
+        grade: c.grade || '',
+        className: c.className || '',
+        avatar: c.avatar || '👦',
+        studentCode: c.studentCode || '',
+      })) : [],
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(famRef, cleanPayload, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error syncing family to cloud by code:', err);
+    return false;
+  }
+};
+
+export const fetchFamilyByCodeFromCloud = async (familyCode: string): Promise<FamilyAccount | null> => {
+  try {
+    const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode || cleanCode.length < 4) return null;
+
+    const famRef = doc(db, 'families_by_code', cleanCode);
+    const snap = await getDoc(famRef);
+    if (!snap.exists()) return null;
+
+    const data = snap.data();
+    return {
+      familyCode: data.familyCode || cleanCode,
+      parentName: data.parentName || 'Phụ Huynh',
+      parentPin: data.parentPin || '',
+      parentEmail: data.parentEmail || '',
+      securityQuestion: data.securityQuestion || '',
+      securityAnswer: data.securityAnswer || '',
+      children: Array.isArray(data.children) ? data.children : [],
+    };
+  } catch (err) {
+    console.error('Error fetching family from cloud by code:', err);
+    return null;
+  }
+};
+
+export const syncChildDataByCodeToCloud = async (familyCode: string, childId: string, appState: any): Promise<boolean> => {
+  try {
+    const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode || !childId) return false;
+
+    const dataRef = doc(db, 'families_by_code', cleanCode, 'children_data', childId);
+    const cleanState = removeUndefined(appState);
+    await setDoc(dataRef, {
+      ...cleanState,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error syncing child data by code to cloud:', err);
+    return false;
+  }
+};
+
+export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId: string): Promise<any | null> => {
+  try {
+    const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    if (!cleanCode || !childId) return null;
+
+    const dataRef = doc(db, 'families_by_code', cleanCode, 'children_data', childId);
+    const snap = await getDoc(dataRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching child data by code from cloud:', err);
+    return null;
+  }
+};
+
