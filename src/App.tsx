@@ -52,6 +52,23 @@ import { BookOpen, ShieldAlert, Sparkles, CheckCircle2, FileText, Award, Calenda
 
 const STORAGE_KEY_PREFIX = 'mindmap_school_v2_';
 
+const getParentPinFromStorage = (fallback: string = '1234'): string => {
+  try {
+    return localStorage.getItem(`${STORAGE_KEY_PREFIX}parent_pin`) || fallback;
+  } catch (e) {
+    console.warn('[SafeStorage] localStorage blocked/unavailable:', e);
+    return fallback;
+  }
+};
+
+const setParentPinToStorage = (pin: string) => {
+  try {
+    localStorage.setItem(`${STORAGE_KEY_PREFIX}parent_pin`, pin);
+  } catch (e) {
+    console.warn('[SafeStorage] localStorage blocked/unavailable:', e);
+  }
+};
+
 export default function App() {
   const [showParentPin, setShowParentPin] = useState(false);
   const [parentPinCallback, setParentPinCallback] = useState<(() => void) | null>(null);
@@ -66,7 +83,7 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    const savedPin = localStorage.getItem(`${STORAGE_KEY_PREFIX}parent_pin`) || '1234';
+    const savedPin = getParentPinFromStorage('1234');
     const savedClass = getSafeItemSync<ClassInfo>(`${STORAGE_KEY_PREFIX}class_info`);
     const studentName = savedClass?.studentName || 'Bảo Nam';
     return {
@@ -82,7 +99,7 @@ export default function App() {
   useEffect(() => {
     saveSafeItem(`${STORAGE_KEY_PREFIX}family_account`, family);
     if (family.parentPin) {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}parent_pin`, family.parentPin);
+      setParentPinToStorage(family.parentPin);
     }
   }, [family]);
 
@@ -1000,7 +1017,7 @@ export default function App() {
   const handleSwitchToParent = () => {
     if (currentRole === 'admin') return;
     
-    const savedPin = localStorage.getItem(`${STORAGE_KEY_PREFIX}parent_pin`) || family.parentPin || '';
+    const savedPin = getParentPinFromStorage(family.parentPin || '');
     if (savedPin) {
       setParentPinCallback(() => () => {
         setActiveChildProfile(null);
@@ -1553,7 +1570,7 @@ export default function App() {
       {/* Modal 7: Parent PIN Challenge */}
       {showParentPin && (
         <ParentPinChallengeModal
-          savedPin={localStorage.getItem(`${STORAGE_KEY_PREFIX}parent_pin`) || family.parentPin || ''}
+          savedPin={getParentPinFromStorage(family.parentPin || '')}
           onClose={() => {
             setShowParentPin(false);
             setParentPinCallback(null);
