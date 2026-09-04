@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { FamilyAccount, ChildProfile } from '../types';
-import { Users, Lock, ChevronRight, UserCircle2, ArrowRight } from 'lucide-react';
-import { signInWithGoogle, getFamilyData, createFamilyAccount, createChildProfile, updateChildProfile, auth } from '../lib/firebase';
+import { Users, Lock, ChevronRight, UserCircle2, ArrowRight, GraduationCap, Key, Mail, Sparkles, AlertTriangle, Copy, Check, ExternalLink, PlayCircle } from 'lucide-react';
+import { signInWithGoogle, getFamilyData, createFamilyAccount, createChildProfile, updateChildProfile, auth, loginAsStudentWithParentEmail } from '../lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 
 interface RegistrationIntroProps {
@@ -10,6 +10,7 @@ interface RegistrationIntroProps {
   onSelectChild: (child: ChildProfile) => void;
   onSelectParent: () => void;
   onAddChild: (child: Omit<ChildProfile, 'id'>) => void;
+  onStudentLoginSuccess?: (parentUserId: string, familyData: FamilyAccount, child: ChildProfile) => void;
 }
 
 export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
@@ -18,12 +19,25 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   onSelectChild,
   onSelectParent,
   onAddChild,
+  onStudentLoginSuccess,
 }) => {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState<any>(null);
   
   const isUninitialized = !family.parentPin || family.children.length === 0;
   const [viewMode, setViewMode] = useState<'login' | 'select' | 'setup' | 'add_child' | 'parent_pin'>('login');
+
+  // Login Mode: 'parent' (Google Auth) | 'student' (Parent Email + Student Code)
+  const [loginTab, setLoginTab] = useState<'parent' | 'student'>('parent');
+  const [studentParentEmail, setStudentParentEmail] = useState('');
+  const [studentAccessCode, setStudentAccessCode] = useState('');
+  const [studentLoginError, setStudentLoginError] = useState('');
+  const [isSubmittingStudentLogin, setIsSubmittingStudentLogin] = useState(false);
+
+  // Unauthorized Domain Handling
+  const [unauthorizedDomainError, setUnauthorizedDomainError] = useState(false);
+  const [domainCopied, setDomainCopied] = useState(false);
+  const currentHostname = typeof window !== 'undefined' ? window.location.hostname : '';
 
   const [parentName, setParentName] = useState(family.parentName || '');
   const [parentPin, setParentPin] = useState('');
@@ -32,6 +46,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const [childGrade, setChildGrade] = useState('6');
   const [childClassName, setChildClassName] = useState('');
   const [childAvatar, setChildAvatar] = useState('👦');
+  const [childStudentCode, setChildStudentCode] = useState('');
 
   const [activeSlide, setActiveSlide] = useState(0);
 
@@ -90,12 +105,37 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const handleLogin = async () => {
     try {
       setLoading(true);
+      setUnauthorizedDomainError(false);
       await signInWithGoogle();
-    } catch (e) {
-      console.error(e);
+    } catch (e: any) {
+      console.error('Login error:', e);
       setLoading(false);
-      alert('Đăng nhập thất bại. Vui lòng thử lại!');
+      const errMsg = e?.message || '';
+      const errCode = e?.code || '';
+      if (errCode === 'auth/unauthorized-domain' || errMsg.includes('auth/unauthorized-domain')) {
+        setUnauthorizedDomainError(true);
+      } else {
+        alert('Đăng nhập thất bại: ' + (errMsg || 'Vui lòng thử lại!'));
+      }
     }
+  };
+
+  const handleStartDemoMode = () => {
+    const demoChild: ChildProfile = {
+      id: 'child_demo_hoc_sinh',
+      name: 'Học sinh Trải nghiệm',
+      grade: 6,
+      className: 'Lớp 6A',
+      avatar: '👦',
+      studentCode: '123456'
+    };
+    const demoFamily: FamilyAccount = {
+      parentName: 'Phụ huynh (Bản dùng thử)',
+      parentPin: '1234',
+      children: [demoChild]
+    };
+    onUpdateFamily(demoFamily);
+    onSelectChild(demoChild);
   };
 
   const handleCompleteSetup = async () => {
@@ -121,11 +161,16 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
     
     setLoading(true);
     try {
+      const assignedCode = childStudentCode.trim() 
+        ? childStudentCode.trim().toUpperCase() 
+        : Math.floor(100000 + Math.random() * 900000).toString();
+
       const childData = {
         name: childName,
         grade: parseInt(childGrade, 10),
         className: childClassName || `Lớp ${childGrade}`,
-        avatar: childAvatar
+        avatar: childAvatar,
+        studentCode: assignedCode,
       };
       
       const newChild = await createChildProfile(currentUser.uid, childData);
@@ -142,6 +187,46 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       alert('Có lỗi xảy ra khi thêm học sinh.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleStudentLogin = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setStudentLoginError('');
+
+    if (!studentParentEmail.trim()) {
+      setStudentLoginError('Vui lòng nhập Email của Ba/Mẹ.');
+      return;
+    }
+    if (!studentAccessCode.trim()) {
+      setStudentLoginError('Vui lòng nhập Mã đăng nhập của con.');
+      return;
+    }
+
+    setIsSubmittingStudentLogin(true);
+    try {
+      const result = await loginAsStudentWithParentEmail(
+        studentParentEmail.trim(),
+        studentAccessCode.trim()
+      );
+
+      if (!result) {
+        setStudentLoginError('Email của Ba/Mẹ hoặc Mã học sinh chưa chính xác. Vui lòng kiểm tra lại!');
+        return;
+      }
+
+      // Thông báo thành công và chuyển ngay vào hồ sơ của học sinh
+      onUpdateFamily(result.familyData);
+      if (onStudentLoginSuccess) {
+        onStudentLoginSuccess(result.parentUserId, result.familyData, result.childProfile);
+      } else {
+        onSelectChild(result.childProfile);
+      }
+    } catch (err: any) {
+      console.error('Error during student login:', err);
+      setStudentLoginError('Đã có lỗi xảy ra trong quá trình xác thực. Vui lòng thử lại!');
+    } finally {
+      setIsSubmittingStudentLogin(false);
     }
   };
 
@@ -270,26 +355,223 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
               </div>
             </div>
 
-            {/* Lời kêu gọi hành động */}
-            <p className="text-slate-600 text-xs md:text-sm font-medium mb-3 flex items-center gap-1.5">
-              <span>👉</span>
-              <span>
-                <strong className="text-indigo-600 font-semibold">Bấm Tiếp tục với Google</strong> bên dưới để tặng con một trợ lý học tập tuyệt vời nhất!
-              </span>
-            </p>
-            
-            <button
-              onClick={handleLogin}
-              className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3.5 px-4 rounded-xl transition-all shadow-sm active:scale-[0.98] text-base md:text-lg group cursor-pointer"
-            >
-              <svg viewBox="0 0 24 24" className="w-6 h-6 group-hover:scale-110 transition-transform">
-                <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-              </svg>
-              Tiếp tục với Google
-            </button>
+            {/* Chuyển đổi đối tượng Đăng nhập: Phụ huynh vs Học sinh */}
+            <div className="flex bg-slate-100 p-1 rounded-xl mb-5 border border-slate-200/80">
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('parent');
+                  setStudentLoginError('');
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  loginTab === 'parent'
+                    ? 'bg-white text-indigo-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Users className="w-3.5 h-3.5" />
+                <span>Cha Mẹ (Google)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setLoginTab('student');
+                  setStudentLoginError('');
+                }}
+                className={`flex-1 py-2 px-3 rounded-lg text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  loginTab === 'student'
+                    ? 'bg-white text-purple-700 shadow-xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <GraduationCap className="w-3.5 h-3.5" />
+                <span>Học sinh vào học 🚀</span>
+              </button>
+            </div>
+
+            {loginTab === 'parent' ? (
+              <>
+                {unauthorizedDomainError && (
+                  <div className="mb-4 p-4 bg-amber-50/90 border border-amber-300 rounded-2xl text-slate-800 space-y-3 shadow-xs">
+                    <div className="flex items-start gap-2.5">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
+                      <div>
+                        <h4 className="text-xs md:text-sm font-bold text-amber-900">
+                          Chưa ủy quyền tên miền trên Firebase
+                        </h4>
+                        <p className="text-xs text-amber-800 mt-1 leading-relaxed">
+                          Tên miền <code className="bg-amber-100 text-amber-950 font-bold px-1.5 py-0.5 rounded text-[11px] select-all">{currentHostname}</code> chưa được thêm vào danh sách <strong>Authorized domains</strong> trong Firebase.
+                        </p>
+                      </div>
+                    </div>
+
+                    {/* Nút sao chép tên miền */}
+                    <div className="flex items-center gap-2 bg-white p-2 rounded-xl border border-amber-200">
+                      <input
+                        type="text"
+                        readOnly
+                        value={currentHostname}
+                        className="text-xs font-mono bg-transparent border-0 outline-none flex-1 text-slate-700 select-all"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (currentHostname) {
+                            navigator.clipboard.writeText(currentHostname);
+                            setDomainCopied(true);
+                            setTimeout(() => setDomainCopied(false), 2500);
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-semibold flex items-center gap-1 cursor-pointer transition-colors shadow-xs"
+                      >
+                        {domainCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5" />
+                            <span>Đã chép</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Sao chép</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+
+                    {/* Hướng dẫn 3 bước */}
+                    <div className="text-[11px] text-slate-700 space-y-1.5 bg-amber-100/60 p-2.5 rounded-xl">
+                      <div className="font-bold text-amber-900 flex items-center gap-1">
+                        <span>👉</span> Cách xử lý nhanh trong 1 phút:
+                      </div>
+                      <ol className="list-decimal list-inside space-y-1 pl-1 text-amber-900">
+                        <li>
+                          Mở <a href="https://console.firebase.google.com/project/thoikhoabieupro/authentication/settings" target="_blank" rel="noopener noreferrer" className="text-indigo-700 font-bold underline inline-flex items-center gap-0.5">Firebase Console <ExternalLink className="w-3 h-3 inline" /></a>
+                        </li>
+                        <li>Chọn thẻ <strong>Authorized domains</strong> rồi bấm <strong>Add domain</strong></li>
+                        <li>Dán tên miền vừa sao chép ở trên và bấm <strong>Save</strong></li>
+                      </ol>
+                    </div>
+
+                    <div className="pt-1 flex flex-col sm:flex-row gap-2">
+                      <button
+                        type="button"
+                        onClick={handleLogin}
+                        className="flex-1 py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <span>Thử đăng nhập lại</span>
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleStartDemoMode}
+                        className="flex-1 py-2 px-3 bg-white hover:bg-slate-50 border border-slate-300 text-slate-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer flex items-center justify-center gap-1.5"
+                      >
+                        <PlayCircle className="w-3.5 h-3.5 text-indigo-600" />
+                        <span>Trải nghiệm dùng thử ngay</span>
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {/* Lời kêu gọi hành động */}
+                <p className="text-slate-600 text-xs md:text-sm font-medium mb-3 flex items-center gap-1.5">
+                  <span>👉</span>
+                  <span>
+                    <strong className="text-indigo-600 font-semibold">Bấm Tiếp tục với Google</strong> bên dưới để quản lý hồ sơ và tiến độ học của các con:
+                  </span>
+                </p>
+                
+                <button
+                  onClick={handleLogin}
+                  className="w-full flex items-center justify-center gap-3 bg-white border border-slate-300 hover:bg-slate-50 text-slate-700 font-bold py-3.5 px-4 rounded-xl transition-all shadow-sm active:scale-[0.98] text-base md:text-lg group cursor-pointer"
+                >
+                  <svg viewBox="0 0 24 24" className="w-6 h-6 group-hover:scale-110 transition-transform">
+                    <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                    <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                    <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                    <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                  </svg>
+                  Tiếp tục với Google
+                </button>
+
+                {/* Tùy chọn trải nghiệm dùng thử nếu chưa cấu hình xong Auth */}
+                {!unauthorizedDomainError && (
+                  <div className="mt-3 pt-3 border-t border-slate-200 text-center">
+                    <button
+                      type="button"
+                      onClick={handleStartDemoMode}
+                      className="text-xs font-semibold text-indigo-600 hover:text-indigo-800 inline-flex items-center gap-1.5 cursor-pointer py-1 px-2 rounded-lg hover:bg-indigo-50 transition-colors"
+                    >
+                      <PlayCircle className="w-3.5 h-3.5" />
+                      <span>Hoặc khám phá nhanh bằng Bản dùng thử (Không cần đăng nhập)</span>
+                    </button>
+                  </div>
+                )}
+              </>
+            ) : (
+              /* DÀNH CHO HỌC SINH ĐĂNG NHẬP */
+              <form onSubmit={handleStudentLogin} className="space-y-3.5">
+                <div className="p-3 bg-purple-50 border border-purple-200/80 rounded-xl text-xs text-purple-900 leading-relaxed flex items-start gap-2">
+                  <Sparkles className="w-4 h-4 shrink-0 text-purple-600 mt-0.5" />
+                  <span>
+                    Con chỉ cần nhập <strong>Email của Ba/Mẹ</strong> và <strong>Mã học sinh</strong> do cha mẹ cấp để vào bàn học ngay mà không cần tài khoản riêng!
+                  </span>
+                </div>
+
+                {studentLoginError && (
+                  <div className="p-2.5 bg-red-50 border border-red-200 text-red-700 text-xs rounded-xl font-medium">
+                    {studentLoginError}
+                  </div>
+                )}
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-500" />
+                    <span>Email của Ba/Mẹ</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={studentParentEmail}
+                    onChange={(e) => setStudentParentEmail(e.target.value)}
+                    placeholder="Ví dụ: ba_me@gmail.com"
+                    className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 focus:border-purple-600 rounded-xl text-slate-900 text-xs md:text-sm outline-hidden"
+                  />
+                </div>
+
+                <div>
+                  <label className="text-xs font-bold text-slate-700 block mb-1 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Mã đăng nhập của con</span>
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    value={studentAccessCode}
+                    onChange={(e) => setStudentAccessCode(e.target.value.toUpperCase())}
+                    placeholder="Ví dụ: 123456 hoặc AN8899"
+                    className="w-full py-2.5 px-3 bg-slate-50 border border-slate-200 focus:border-purple-600 rounded-xl text-slate-900 text-sm md:text-base outline-hidden font-mono font-bold tracking-wider"
+                  />
+                  <p className="text-[11px] text-slate-500 mt-1">
+                    Mã này do Ba/Mẹ tạo trong phần "Góc Phụ Huynh".
+                  </p>
+                </div>
+
+                <button
+                  type="submit"
+                  disabled={isSubmittingStudentLogin}
+                  className="w-full flex items-center justify-center gap-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white font-bold py-3 px-4 rounded-xl shadow-md active:scale-[0.98] transition-all cursor-pointer text-sm md:text-base disabled:opacity-50"
+                >
+                  {isSubmittingStudentLogin ? (
+                    <span>Đang kiểm tra thông tin...</span>
+                  ) : (
+                    <>
+                      <span>Vào bàn học ngay 🚀</span>
+                      <ArrowRight className="w-4 h-4" />
+                    </>
+                  )}
+                </button>
+              </form>
+            )}
             
             <p className="text-xs text-slate-400 mt-6 text-center">
               Bằng cách đăng nhập, bạn đồng ý với các điều khoản bảo mật và lưu trữ an toàn của hệ thống.
@@ -501,6 +783,32 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                     placeholder={`VD: ${childGrade}A1`}
                   />
                 </div>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">
+                  Mã đăng nhập của con (Tùy chọn)
+                </label>
+                <div className="flex gap-2">
+                  <input
+                    type="text"
+                    maxLength={10}
+                    className="w-full px-4 py-3 border border-slate-200 rounded-xl focus:ring-2 focus:ring-indigo-500 outline-none font-mono tracking-wider uppercase font-bold"
+                    value={childStudentCode}
+                    onChange={(e) => setChildStudentCode(e.target.value.toUpperCase())}
+                    placeholder="VD: 123456 (để trống sẽ tự tạo)"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setChildStudentCode(Math.floor(100000 + Math.random() * 900000).toString())}
+                    className="px-3 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-semibold whitespace-nowrap cursor-pointer"
+                  >
+                    Tạo ngẫu nhiên
+                  </button>
+                </div>
+                <p className="text-xs text-slate-500 mt-1">
+                  Mã này giúp con đăng nhập nhanh trên máy tính riêng bằng Email của Ba/Mẹ.
+                </p>
               </div>
 
               <div>

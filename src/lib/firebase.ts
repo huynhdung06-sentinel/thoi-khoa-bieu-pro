@@ -1,6 +1,18 @@
 import { initializeApp } from 'firebase/app';
 import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
-import { getFirestore, doc, setDoc, getDoc, collection, getDocs, deleteDoc, serverTimestamp, updateDoc } from 'firebase/firestore';
+import { 
+  getFirestore, 
+  doc, 
+  setDoc, 
+  getDoc, 
+  collection, 
+  getDocs, 
+  deleteDoc, 
+  serverTimestamp, 
+  updateDoc,
+  query,
+  where
+} from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
 import { FamilyAccount, ChildProfile } from '../types';
 
@@ -50,12 +62,14 @@ export const getFamilyData = async (userId: string): Promise<FamilyAccount | nul
         grade: childData.grade,
         className: childData.className,
         avatar: childData.avatar,
+        studentCode: childData.studentCode || '',
       });
     });
 
     return {
       parentName: data.parentName,
       parentPin: data.parentPin,
+      parentEmail: data.parentEmail || '',
       children: children,
     };
   } catch (error) {
@@ -64,15 +78,16 @@ export const getFamilyData = async (userId: string): Promise<FamilyAccount | nul
   }
 };
 
-export const createFamilyAccount = async (userId: string, data: { parentName: string; parentPin: string }) => {
+export const createFamilyAccount = async (userId: string, data: { parentName: string; parentPin: string; parentEmail?: string }) => {
   const familyRef = doc(db, 'families', userId);
   await setDoc(familyRef, {
     parentName: data.parentName,
     parentPin: data.parentPin,
+    parentEmail: (data.parentEmail || '').toLowerCase().trim(),
     ownerId: userId,
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
-  });
+  }, { merge: true });
 };
 
 export const createChildProfile = async (userId: string, child: Omit<ChildProfile, 'id'>): Promise<ChildProfile> => {
@@ -82,6 +97,7 @@ export const createChildProfile = async (userId: string, child: Omit<ChildProfil
     grade: child.grade,
     className: child.className || '',
     avatar: child.avatar || '',
+    studentCode: (child.studentCode || '').trim(),
     createdAt: serverTimestamp(),
     updatedAt: serverTimestamp(),
   });
@@ -95,8 +111,77 @@ export const updateChildProfile = async (userId: string, child: ChildProfile) =>
     grade: child.grade,
     className: child.className || '',
     avatar: child.avatar || '',
+    studentCode: (child.studentCode || '').trim(),
     updatedAt: serverTimestamp(),
   });
+};
+
+// Tìm và xác thực học sinh bằng Email cha mẹ + Mã riêng của con
+export const loginAsStudentWithParentEmail = async (parentEmail: string, studentCode: string): Promise<{
+  parentUserId: string;
+  familyData: FamilyAccount;
+  childProfile: ChildProfile;
+} | null> => {
+  try {
+    const cleanEmail = parentEmail.toLowerCase().trim();
+    const cleanCode = studentCode.trim().toUpperCase();
+
+    // Query family by parentEmail
+    const familiesRef = collection(db, 'families');
+    const q = query(familiesRef, where('parentEmail', '==', cleanEmail));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return null;
+    }
+
+    const familyDoc = snap.docs[0];
+    const parentUserId = familyDoc.id;
+    const familyData = familyDoc.data();
+
+    // Get children of this family
+    const childrenRef = collection(db, 'families', parentUserId, 'children');
+    const childrenSnap = await getDocs(childrenRef);
+
+    const childrenList: ChildProfile[] = [];
+    let matchedChild: ChildProfile | null = null;
+
+    childrenSnap.forEach(docSnap => {
+      const c = docSnap.data();
+      const childObj: ChildProfile = {
+        id: docSnap.id,
+        name: c.name,
+        grade: c.grade,
+        className: c.className,
+        avatar: c.avatar,
+        studentCode: c.studentCode || '',
+      };
+      childrenList.push(childObj);
+
+      // Check match (so sánh không phân biệt hoa thường)
+      if (childObj.studentCode && childObj.studentCode.trim().toUpperCase() === cleanCode) {
+        matchedChild = childObj;
+      }
+    });
+
+    if (!matchedChild) {
+      return null;
+    }
+
+    return {
+      parentUserId,
+      familyData: {
+        parentName: familyData.parentName,
+        parentPin: familyData.parentPin,
+        parentEmail: familyData.parentEmail,
+        children: childrenList,
+      },
+      childProfile: matchedChild
+    };
+  } catch (err) {
+    console.error('Error logging in as student:', err);
+    return null;
+  }
 };
 
 export const deleteChildProfile = async (userId: string, childId: string) => {

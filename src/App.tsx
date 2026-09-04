@@ -181,17 +181,32 @@ export default function App() {
   const [periods, setPeriods] = useState<PeriodInfo[]>(() => STANDARD_PERIODS);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [studentParentUserId, setStudentParentUserId] = useState<string | null>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
+    } catch {
+      return null;
+    }
+  });
+
+  const effectiveUserId = currentUser?.uid || studentParentUserId;
   
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      if (user) {
+        setStudentParentUserId(user.uid);
+        try {
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}student_parent_uid`, user.uid);
+        } catch {}
+      }
     });
     return () => unsubscribe();
   }, []);
 
   // Profile Hydration Effect (Isolation of Schedules & Study Data)
   useEffect(() => {
-    if (!activeChildProfile || !currentUser) {
+    if (!activeChildProfile || !effectiveUserId) {
       setIsHydrated(true);
       return;
     }
@@ -203,7 +218,7 @@ export default function App() {
       setIsHydrated(false);
 
       try {
-        const firebaseData = await getChildData(currentUser.uid, id);
+        const firebaseData = await getChildData(effectiveUserId, id);
         
         if (!isMounted) return;
 
@@ -253,15 +268,15 @@ export default function App() {
 
     hydrateChildData();
     return () => { isMounted = false; };
-  }, [activeChildProfile?.id, currentUser]);
+  }, [activeChildProfile?.id, effectiveUserId]);
 
   // Child-specific Save Effects to Firebase
   useEffect(() => {
-    if (isHydratingRef.current || !isHydrated || !activeChildProfile || !currentUser) return;
+    if (isHydratingRef.current || !isHydrated || !activeChildProfile || !effectiveUserId) return;
     
     // Create a debounce timer to avoid too many writes
     const timer = setTimeout(() => {
-      saveChildData(currentUser.uid, activeChildProfile.id, {
+      saveChildData(effectiveUserId, activeChildProfile.id, {
         classInfo,
         subjects,
         timetableSlots,
@@ -274,7 +289,7 @@ export default function App() {
     }, 1500);
     
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, isHydrated, currentUser]);
+  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, isHydrated, effectiveUserId]);
 
   const [isEditPeriodsOpen, setIsEditPeriodsOpen] = useState(false);
 
@@ -1188,6 +1203,28 @@ export default function App() {
           }));
           setCurrentRole('student');
           setIsIntroOpen(false);
+        }}
+        onStudentLoginSuccess={(parentUserId, familyData, child) => {
+          setStudentParentUserId(parentUserId);
+          try {
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}student_parent_uid`, parentUserId);
+          } catch {}
+          setFamily(familyData);
+          setActiveChildProfile(child);
+          const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
+          const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+            ? rawGrade
+            : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+          setClassInfo((prev) => ({
+            ...prev,
+            studentName: child.name,
+            className: finalClass,
+          }));
+          setCurrentRole('student');
+          setIsIntroOpen(false);
+        }}
+        onAddChild={(newChild) => {
+          // Handled via onUpdateFamily and onSelectChild inside RegistrationIntro
         }}
         onSelectParent={() => {
           setActiveChildProfile(null);

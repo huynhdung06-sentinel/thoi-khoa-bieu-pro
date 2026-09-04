@@ -13,7 +13,9 @@ import {
   CheckCircle2, 
   AlertCircle, 
   Check, 
-  Eye
+  Eye,
+  Key,
+  Copy
 } from 'lucide-react';
 import { ChildProfile, FamilyAccount } from '../types';
 
@@ -56,12 +58,14 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const [parentName, setParentName] = useState(family.parentName || 'Bố Mẹ');
   const [parentPin, setParentPin] = useState(family.parentPin || '');
   const [pinChangeMsg, setPinChangeMsg] = useState('');
+  const [copiedChildId, setCopiedChildId] = useState<string | null>(null);
 
   // Editing existing child modal state
   const [editingChild, setEditingChild] = useState<ChildProfile | null>(null);
   const [editName, setEditName] = useState('');
   const [editGrade, setEditGrade] = useState('');
   const [editAvatar, setEditAvatar] = useState('🚀');
+  const [editStudentCode, setEditStudentCode] = useState('');
   const [editError, setEditError] = useState('');
 
   // Deleting child confirm state
@@ -72,6 +76,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
   const [newName, setNewName] = useState('');
   const [newGrade, setNewGrade] = useState('Lớp 7');
   const [newAvatar, setNewAvatar] = useState('🦊');
+  const [newStudentCode, setNewStudentCode] = useState('');
   const [addError, setAddError] = useState('');
 
   // Save parent info (Name + PIN)
@@ -100,6 +105,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     setEditName(child.name);
     setEditGrade(child.className || (child.grade ? String(child.grade) : 'Lớp 7'));
     setEditAvatar(child.avatar || '🚀');
+    setEditStudentCode(child.studentCode || '');
     setEditError('');
   };
 
@@ -118,6 +124,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
       grade: gradeVal,
       className: gradeVal,
       avatar: editAvatar,
+      studentCode: editStudentCode.trim().toUpperCase(),
     };
 
     const updatedChildren = family.children.map((c) => (c.id === editingChild.id ? updatedChild : c));
@@ -157,12 +164,16 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
       return;
     }
     const gradeVal = newGrade.trim() || 'Lớp học';
+    const fallbackCode = Math.floor(100000 + Math.random() * 900000).toString();
+    const studentCode = newStudentCode.trim().toUpperCase() || fallbackCode;
+
     const newChild: ChildProfile = {
       id: `child-${Date.now()}`,
       name: newName.trim(),
       grade: gradeVal,
       className: gradeVal,
       avatar: newAvatar,
+      studentCode: studentCode,
     };
 
     const updatedChildren = [...family.children, newChild];
@@ -177,6 +188,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
     setNewName('');
     setNewGrade('Lớp 7');
     setNewAvatar('🦊');
+    setNewStudentCode('');
     setAddError('');
     setIsAddingChild(false);
   };
@@ -279,7 +291,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                             </span>
                           )}
                         </div>
-                        <div className="flex items-center gap-2 mt-0.5">
+                        <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                           <span className="text-xs font-semibold px-2 py-0.5 rounded-md bg-white text-slate-600 border border-slate-200">
                             {displayGrade}
                           </span>
@@ -287,6 +299,26 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                             <ShieldCheck className="w-3 h-3" />
                             <span>Ngăn dữ liệu riêng</span>
                           </span>
+                          {child.studentCode && (
+                            <button
+                              type="button"
+                              onClick={() => {
+                                navigator.clipboard?.writeText(child.studentCode || '');
+                                setCopiedChildId(child.id);
+                                setTimeout(() => setCopiedChildId(null), 2000);
+                              }}
+                              className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-purple-50 hover:bg-purple-100 text-purple-700 border border-purple-200 text-[11px] font-mono font-bold transition-colors cursor-pointer"
+                              title="Bấm để sao chép mã đăng nhập của con"
+                            >
+                              <Key className="w-3 h-3 text-purple-600" />
+                              <span>Mã: {child.studentCode}</span>
+                              {copiedChildId === child.id ? (
+                                <Check className="w-3 h-3 text-emerald-600" />
+                              ) : (
+                                <Copy className="w-3 h-3 text-purple-400" />
+                              )}
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -524,6 +556,32 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                 </div>
               </div>
 
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Mã đăng nhập của con (Access Code)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setEditStudentCode(Math.floor(100000 + Math.random() * 900000).toString())}
+                    className="text-[11px] text-purple-600 hover:text-purple-700 font-bold cursor-pointer"
+                  >
+                    Tạo mã ngẫu nhiên
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={editStudentCode}
+                  onChange={(e) => setEditStudentCode(e.target.value.toUpperCase())}
+                  placeholder="Ví dụ: 123456 hoặc AN8899"
+                  className="w-full py-2 px-3 bg-slate-50 border border-slate-200 focus:border-purple-600 rounded-xl text-slate-900 text-xs outline-hidden font-mono font-bold tracking-wider"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Con có thể dùng Email của cha mẹ + Mã này để đăng nhập ngay trên máy tính/điện thoại riêng.
+                </p>
+              </div>
+
               <div className="flex gap-2.5 pt-2">
                 <button
                   type="button"
@@ -631,6 +689,32 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                     </button>
                   ))}
                 </div>
+              </div>
+
+              <div>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="text-xs font-bold text-slate-700 flex items-center gap-1.5">
+                    <Key className="w-3.5 h-3.5 text-purple-600" />
+                    <span>Mã đăng nhập của con (Access Code)</span>
+                  </label>
+                  <button
+                    type="button"
+                    onClick={() => setNewStudentCode(Math.floor(100000 + Math.random() * 900000).toString())}
+                    className="text-[11px] text-purple-600 hover:text-purple-700 font-bold cursor-pointer"
+                  >
+                    Tạo mã ngẫu nhiên
+                  </button>
+                </div>
+                <input
+                  type="text"
+                  value={newStudentCode}
+                  onChange={(e) => setNewStudentCode(e.target.value.toUpperCase())}
+                  placeholder="Ví dụ: 123456 hoặc AN8899 (bỏ trống hệ thống sẽ tự cấp)"
+                  className="w-full py-2 px-3 bg-slate-50 border border-slate-200 focus:border-purple-600 rounded-xl text-slate-900 text-xs outline-hidden font-mono font-bold tracking-wider"
+                />
+                <p className="text-[11px] text-slate-500 mt-1">
+                  Mã này cấp cho con để đăng nhập độc lập tại máy tính hoặc điện thoại riêng của con.
+                </p>
               </div>
 
               <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-xs text-blue-800 leading-relaxed flex items-start gap-2">

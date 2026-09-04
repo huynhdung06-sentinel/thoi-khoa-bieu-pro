@@ -6,6 +6,7 @@ export interface ChildProfile {
   grade?: number | string; // 6, 7, 8, 9, or "Lớp 10A1", "Sinh viên Năm 2"
   className?: string; // e.g. "9A1", "Kỹ thuật phần mềm"
   avatar: string; // emoji icon e.g. "🚀", "🐱", "🦁", "🦊", "⭐", "🦄", "⚽", "🎮", "📚"
+  studentCode?: string; // Mã kết nối riêng biệt cho con (do phụ huynh tạo, vd: 123456 hoặc AN8899)
 }
 
 export interface FamilyAccount {
