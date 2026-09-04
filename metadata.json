@@ -1,0 +1,6 @@
+{
+  "name": "Thoi Khoa Bieu",
+  "description": "Thời khóa biểu cá nhân và thư viện tóm tắt chương trình học, sơ đồ tư duy & flashcard cho học sinh.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,1 @@
+sed -i 's/onSwitchProfile={() => setIsIntroOpen(true)}/onSwitchProfile={() => setIsIntroOpen(true)}\n        onLogout={() => {\n          import("\.\/lib\/firebase").then(({ signOut }) => signOut().then(() => setIsIntroOpen(true)));\n        }}/' src/App.tsx
