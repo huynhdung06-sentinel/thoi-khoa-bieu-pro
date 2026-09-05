@@ -58,9 +58,47 @@
         "subjects": { "type": "object" },
         "updatedAt": { "type": "string", "format": "timestamp" }
       }
+    },
+    "SubAccount": {
+      "title": "Sub Account",
+      "description": "Child sub-account for instant QR and 2-way realtime sync",
+      "type": "object",
+      "properties": {
+        "subId": { "type": "string", "maxLength": 128 },
+        "parentId": { "type": "string", "maxLength": 128 },
+        "role": { "type": "string" },
+        "childProfile": { "type": "object" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string", "format": "timestamp" },
+        "updatedAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["subId", "parentId", "role"]
+    },
+    "ParentAccount": {
+      "title": "Parent Account",
+      "description": "Parent management account for oversight",
+      "type": "object",
+      "properties": {
+        "parentId": { "type": "string", "maxLength": 128 },
+        "parentName": { "type": "string", "maxLength": 100 },
+        "updatedAt": { "type": "string", "format": "timestamp" }
+      },
+      "required": ["parentId"]
     }
   },
   "firestore": {
+    "sub_accounts/{subId}": {
+      "schema": "SubAccount",
+      "description": "Stores sub-accounts for child devices"
+    },
+    "sub_accounts/{subId}/data/current": {
+      "schema": "ChildData",
+      "description": "Stores 2-way realtime state of sub-account"
+    },
+    "parent_accounts/{parentId}": {
+      "schema": "ParentAccount",
+      "description": "Stores parent account details"
+    },
     "families/{familyId}": {
       "schema": "FamilyAccount",
       "description": "Stores the main family account, ID is the parent's Firebase Auth UID."

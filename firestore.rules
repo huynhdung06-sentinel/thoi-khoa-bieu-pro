@@ -98,5 +98,21 @@ service cloud.firestore {
         allow read, write: if true;
       }
     }
+
+    // Luật cho Tài khoản Con (sub_accounts) - Hỗ trợ QR Token 0ms & Đồng bộ 2 chiều Realtime
+    match /sub_accounts/{subId} {
+      allow read: if true;
+      allow create, update: if true;
+      allow delete: if isSignedIn();
+
+      match /data/{document=**} {
+        allow read, write: if true;
+      }
+    }
+
+    // Luật cho Tài khoản Cha (parent_accounts)
+    match /parent_accounts/{parentId} {
+      allow read, write: if true;
+    }
   }
 }

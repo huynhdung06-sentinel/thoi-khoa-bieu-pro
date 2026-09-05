@@ -807,6 +807,9 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
       }
 
       const savedStudentNote = lesson.primaryNote || lesson.htmlBody || lesson.studentNote || lesson.personalNote || '';
+      const embeddedHtmlCode = lesson.embeddedHtmlCode || '';
+      const summary = lesson.summary || '';
+      const keyPoints = lesson.keyPoints || [];
       const homeworkImages = lesson.completedHomeworkImages || [];
       const mindmapSections = lesson.mindmapSections || [];
       const studentNote = lesson.studentNote || '';
@@ -825,39 +828,63 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
           >
             <span>📝 Soạn Bài</span>
           </button>
-// //           <button 
-// //             type="button" 
-// //             onclick="switchLessonTab('homework')" 
-// //             class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition \${
-// //               currentLessonTab === 'homework'
-// //                 ? 'bg-blue-600 text-white shadow-xs'
-// //                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-// //             }"
-// //           >
-// //             <span>📤 Nộp báo cáo Học Bài</span>
-// //             \${homeworkImages.length > 0 ? \`
-// //               <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold \${
-// //                 currentLessonTab === 'homework' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
-// //               }">
-// //                 \${homeworkImages.length} ảnh
-// //               </span>
-// //             \` : ''}
-// //           </button>
+          <button 
+            type="button" 
+            onclick="switchLessonTab('homework')" 
+            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition \${
+              currentLessonTab === 'homework'
+                ? 'bg-blue-600 text-white shadow-xs'
+                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+            }"
+          >
+            <span>📤 Nộp báo cáo Học Bài</span>
+            \${homeworkImages.length > 0 ? \`
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold \${
+                currentLessonTab === 'homework' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
+              }">
+                \${homeworkImages.length} ảnh
+              </span>
+            \` : ''}
+          </button>
         </div>
       \`;
 
       let mainTabBody = '';
       if (currentLessonTab === 'notes') {
+        let contentHtml = '';
         if (savedStudentNote) {
-          mainTabBody = \`
-            <div class="p-5 sm:p-7 rounded-2xl bg-white border border-slate-200 shadow-xs">
-              <div class="prose max-w-none text-sm sm:text-base text-slate-800 leading-relaxed font-normal [&>h1]:text-lg [&>h1]:font-bold [&>h1]:text-blue-700 [&>h1]:mb-3 [&>h2]:text-base [&>h2]:font-bold [&>h2]:text-slate-900 [&>h2]:mt-4 [&>h2]:mb-2 [&>h3]:text-sm sm:[&>h3]:text-base [&>h3]:font-bold [&>h3]:text-slate-800 [&>h3]:mt-3 [&>h3]:mb-1.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:space-y-1 [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1 [&>p]:mb-3 [&>blockquote]:border-l-4 [&>blockquote]:border-blue-500 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:bg-blue-50/50 [&>blockquote]:py-1.5 [&>blockquote]:rounded-r-lg">
-                \${savedStudentNote}
+          contentHtml = \`
+            <div class="prose max-w-none text-sm sm:text-base text-slate-800 leading-relaxed font-normal [&>h1]:text-lg [&>h1]:font-bold [&>h1]:text-blue-700 [&>h1]:mb-3 [&>h2]:text-base [&>h2]:font-bold [&>h2]:text-slate-900 [&>h2]:mt-4 [&>h2]:mb-2 [&>h3]:text-sm sm:[&>h3]:text-base [&>h3]:font-bold [&>h3]:text-slate-800 [&>h3]:mt-3 [&>h3]:mb-1.5 [&>ul]:list-disc [&>ul]:pl-5 [&>ul]:space-y-1 [&>ol]:list-decimal [&>ol]:pl-5 [&>ol]:space-y-1 [&>p]:mb-3 [&>blockquote]:border-l-4 [&>blockquote]:border-blue-500 [&>blockquote]:pl-4 [&>blockquote]:italic [&>blockquote]:bg-blue-50/50 [&>blockquote]:py-1.5 [&>blockquote]:rounded-r-lg">
+              \${savedStudentNote}
+            </div>
+          \`;
+        } else if (embeddedHtmlCode) {
+          contentHtml = \`
+            <div class="space-y-3">
+              <div class="p-3 bg-blue-50 border border-blue-200 rounded-xl flex items-center justify-between text-xs font-bold text-blue-800">
+                <span>⚡ Bài học nhúng File HTML / Thí nghiệm tương tác</span>
+              </div>
+              <div class="w-full h-[600px] rounded-2xl border border-slate-200 bg-white overflow-hidden shadow-inner">
+                <iframe srcdoc="\${embeddedHtmlCode.replace(/"/g, '&quot;')}" class="w-full h-full border-0" sandbox="allow-scripts allow-same-origin allow-forms"></iframe>
               </div>
             </div>
           \`;
+        } else if (summary || keyPoints.length > 0) {
+          contentHtml = \`
+            <div class="space-y-4">
+              \${summary ? \`<p class="text-sm sm:text-base text-slate-700 leading-relaxed font-medium">\${summary}</p>\` : ''}
+              \${keyPoints.length > 0 ? \`
+                <div class="space-y-2">
+                  <h3 class="font-bold text-sm text-blue-700 uppercase tracking-wide">Trọng tâm bài học:</h3>
+                  <ul class="list-disc pl-5 space-y-1.5 text-sm text-slate-700">
+                    \${keyPoints.map(kp => \`<li>\${kp}</li>\`).join('')}
+                  </ul>
+                </div>
+              \` : ''}
+            </div>
+          \`;
         } else {
-          mainTabBody = \`
+          contentHtml = \`
             <div class="py-12 px-4 text-center space-y-3 bg-slate-50 rounded-2xl border border-slate-200">
               <p class="text-sm sm:text-base text-slate-500 font-medium">
                 Chưa có nội dung soạn bài cho bài học này.
@@ -865,6 +892,11 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
             </div>
           \`;
         }
+        mainTabBody = \`
+          <div class="p-5 sm:p-7 rounded-2xl bg-white border border-slate-200 shadow-xs">
+            \${contentHtml}
+          </div>
+        \`;
       } else {
         // Tab: Nộp báo cáo Học Bài
         let reportCards = [];
@@ -946,39 +978,7 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
           \`);
         }
 
-//         // 2. Ghi chú & Tóm tắt báo cáo
-//         if (studentNote && studentNote.trim()) {
-//           reportCards.push(\`
-//             <div class="p-5 sm:p-6 rounded-2xl bg-blue-50/70 border border-blue-200/80 shadow-xs space-y-2">
-//               <div class="font-bold text-xs sm:text-sm text-blue-900 flex items-center gap-2">
-//                 <span>📝 Ghi Chú & Tóm Tắt Của Học Sinh</span>
-//               </div>
-//               <p class="text-xs sm:text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">\${studentNote}</p>
-//             </div>
-//           \`);
-//         }
-// 
-//         // 3. Ảnh bài nộp của học sinh
-//         if (homeworkImages.length > 0) {
-//           reportCards.push(\`
-//             <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
-//               <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-//                 <span class="font-bold text-xs sm:text-sm text-slate-900">📸 Ảnh Bài Nộp Của Học Sinh (\${homeworkImages.length} ảnh)</span>
-//                 <span class="text-[11px] text-slate-500 font-medium">Bấm vào ảnh để phóng to</span>
-//               </div>
-//               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-//                 \${homeworkImages.map((imgSrc) => \`
-//                   <div class="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[3/4] cursor-pointer hover:shadow-md transition" onclick="openLightbox('\${imgSrc.replace(/'/g, "\\\\'")}')">
-//                     <img src="\${imgSrc}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="Ảnh bài nộp" loading="lazy" />
-//                     <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold">
-//                       <span>🔍 Phóng to</span>
-//                     </div>
-//                   </div>
-//                 \`).join('')}
-//               </div>
-//             </div>
-//           \`);
-//         }
+
 
         if (reportCards.length === 0) {
           mainTabBody = \`

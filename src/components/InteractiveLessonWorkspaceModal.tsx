@@ -1368,6 +1368,24 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
 
             <span className="w-px h-3.5 bg-blue-300/70 dark:bg-blue-600/50 self-center shrink-0 mx-0.5" aria-hidden="true" />
 
+            {/* 5. Nộp Báo Cáo Học Bài */}
+            <button
+              type="button"
+              onClick={() => setSelectedSourceType('homework_image')}
+              className={`px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer shrink-0 flex items-center gap-1.5 active:scale-[0.98] ${
+                selectedSourceType === 'homework_image'
+                  ? 'bg-white dark:bg-slate-700 text-teal-600 dark:text-teal-400 shadow-2xs font-bold'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-teal-700 dark:hover:text-teal-300 hover:bg-teal-50 dark:hover:bg-teal-950/60 font-medium'
+              }`}
+            >
+              <FileCheck className="w-3.5 h-3.5 text-teal-600 dark:text-teal-400" />
+              <span>Nộp báo cáo Học Bài</span>
+              {homeworkImages.length > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.5 text-[10px] bg-teal-100 dark:bg-teal-900/70 text-teal-800 dark:text-teal-200 rounded-full font-bold">
+                  {homeworkImages.length}
+                </span>
+              )}
+            </button>
           </div>
 
           {/* Right: Mode & Actions */}

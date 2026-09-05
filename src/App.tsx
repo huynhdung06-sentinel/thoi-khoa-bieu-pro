@@ -37,7 +37,12 @@ import {
   syncFamilyByCodeToCloud,
   fetchFamilyByCodeFromCloud,
   syncChildDataByCodeToCloud,
-  fetchChildDataByCodeFromCloud
+  fetchChildDataByCodeFromCloud,
+  signInAnonymouslyUser,
+  decodeSubAccountToken,
+  subscribeSubAccountData,
+  saveSubAccountData,
+  fetchSubAccountDoc
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
@@ -141,14 +146,54 @@ export default function App() {
     }
   }, [family]);
 
-  // Sync latest family data & Handle Magic Direct Link on startup
+  // Sync latest family data & Handle Magic Direct Link & 0ms Token on startup
   useEffect(() => {
     let isCancelled = false;
     const checkCloudFamily = async () => {
       try {
         const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token');
         const urlFamilyCode = urlParams.get('family');
         const urlChildId = urlParams.get('child');
+
+        // 1. FAST-PATH: Handle 0ms Sub-Account Token
+        if (urlToken) {
+          const decoded = decodeSubAccountToken(urlToken);
+          if (decoded && decoded.subId) {
+            signInAnonymouslyUser().catch(() => {});
+            localStorage.setItem('mindmap_sub_account_id', decoded.subId);
+
+            let targetChild = family.children?.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
+            if (!targetChild) {
+              targetChild = {
+                id: decoded.subId,
+                subId: decoded.subId,
+                parentId: decoded.parentId,
+                name: decoded.childName || 'Người học',
+                grade: decoded.childGrade || '7',
+                className: decoded.childGrade || 'Lớp 7',
+                avatar: '🚀'
+              };
+              setFamily(prev => ({
+                ...prev,
+                children: [...(prev.children || []), targetChild!]
+              }));
+            }
+            setActiveChildProfile(targetChild);
+            localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
+            if (decoded.parentId) {
+              localStorage.setItem('mindmap_remembered_family_code', decoded.parentId);
+            }
+            setIsIntroOpen(false);
+
+            // Clean URL to keep it pretty
+            const url = new URL(window.location.href);
+            url.searchParams.delete('token');
+            url.searchParams.delete('family');
+            url.searchParams.delete('child');
+            window.history.replaceState({}, '', url.toString());
+          }
+        }
         
         const targetFamilyCode = urlFamilyCode || localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
         
@@ -452,7 +497,30 @@ export default function App() {
     return () => { isMounted = false; };
   }, [activeChildProfile?.id, effectiveUserId, family.familyCode]);
 
-  // Child-specific Save Effects to Firebase & Cloud by Family Code
+  // 2-Way Realtime Stream Listener for Sub-Accounts (Parent <-> Child live sync via onSnapshot)
+  useEffect(() => {
+    const subId = activeChildProfile?.subId;
+    if (!subId) return;
+
+    const unsubscribe = subscribeSubAccountData(subId, (realtimeData) => {
+      if (realtimeData && isHydrated && !isHydratingRef.current) {
+        if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
+        if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
+        if (realtimeData.subjects) setSubjects(realtimeData.subjects);
+        if (realtimeData.lessons) setLessons(realtimeData.lessons);
+        if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
+        if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
+        if (realtimeData.documents) setDocuments(realtimeData.documents);
+        if (realtimeData.periods) setPeriods(realtimeData.periods);
+      }
+    });
+
+    return () => {
+      unsubscribe();
+    };
+  }, [activeChildProfile?.subId, isHydrated]);
+
+  // Child-specific Save Effects to Firebase & Cloud by Family Code & SubAccount Realtime
   useEffect(() => {
     if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
     
@@ -475,10 +543,13 @@ export default function App() {
       if (family.familyCode) {
         syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload).catch(console.error);
       }
+      if (activeChildProfile.subId) {
+        saveSubAccountData(activeChildProfile.subId, payload).catch(console.error);
+      }
     }, 1500);
     
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, isHydrated, effectiveUserId, family.familyCode]);
+  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode]);
 
   const [isEditPeriodsOpen, setIsEditPeriodsOpen] = useState(false);
 

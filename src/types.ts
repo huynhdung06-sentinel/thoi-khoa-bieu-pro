@@ -8,6 +8,17 @@ export interface ChildProfile {
   avatar: string; // emoji icon e.g. "🚀", "🐱", "🦁", "🦊", "⭐", "🦄", "⚽", "🎮", "📚"
   studentCode?: string; // Mã kết nối riêng biệt cho con (vd: AN01, 1234)
   pin?: string; // Mã PIN riêng của bé (tùy chọn)
+  subId?: string; // Mã sub-account định danh cho tài khoản con
+  parentId?: string; // ID của tài khoản cha
+}
+
+export interface SubAccountToken {
+  parentId: string;
+  subId: string;
+  role: 'sub_account';
+  childName?: string;
+  childGrade?: string;
+  createdAt: number;
 }
 
 export interface FamilyAccount {

@@ -1,8 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { FamilyAccount } from '../types';
-import { Copy, Check, QrCode, X, Laptop, Smartphone, Link as LinkIcon, Maximize2 } from 'lucide-react';
+import { FamilyAccount, SubAccountToken } from '../types';
+import { Copy, Check, QrCode, X, Laptop, Smartphone, Link as LinkIcon, Maximize2, Sparkles } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
-import { syncFamilyByCodeToCloud } from '../lib/firebase';
+import { syncFamilyByCodeToCloud, generateSubId, encodeSubAccountToken, initSubAccountDoc } from '../lib/firebase';
 
 interface FamilyCodeCardModalProps {
   isOpen: boolean;
@@ -30,6 +30,34 @@ export const FamilyCodeCardModal: React.FC<FamilyCodeCardModalProps> = ({
   const familyCode = (family.familyCode || 'GD8899').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   const getChildLink = (childId: string) => {
+    const child = family.children.find(c => c.id === childId);
+    const subId = (child && child.subId) ? child.subId : generateSubId(familyCode, child?.name);
+
+    if (child) {
+      const tokenPayload: SubAccountToken = {
+        parentId: familyCode,
+        subId: subId,
+        role: 'sub_account',
+        childName: child.name,
+        childGrade: typeof child.grade === 'string' ? child.grade : `Lớp ${child.grade}`,
+        createdAt: Date.now()
+      };
+      const token = encodeSubAccountToken(tokenPayload);
+
+      // Background non-blocking sync
+      initSubAccountDoc({
+        parentId: familyCode,
+        subId: subId,
+        childProfile: { ...child, subId }
+      }).catch(() => {});
+
+      const url = new URL(window.location.origin + window.location.pathname);
+      url.searchParams.set('token', token);
+      url.searchParams.set('family', familyCode);
+      url.searchParams.set('child', childId);
+      return url.toString();
+    }
+
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('family', familyCode);
     url.searchParams.set('child', childId);

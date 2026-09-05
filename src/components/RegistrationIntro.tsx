@@ -34,7 +34,16 @@ import {
   Link,
   QrCode
 } from 'lucide-react';
-import { fetchFamilyByCodeFromCloud, syncFamilyByCodeToCloud } from '../lib/firebase';
+import { 
+  fetchFamilyByCodeFromCloud, 
+  syncFamilyByCodeToCloud,
+  generateSubId,
+  encodeSubAccountToken,
+  decodeSubAccountToken,
+  initSubAccountDoc,
+  signInAnonymouslyUser
+} from '../lib/firebase';
+import { SubAccountToken } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
 interface RegistrationIntroProps {
@@ -553,17 +562,51 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
     onSelectChild(guestChild);
   };
 
+  const ensureChildSubId = (child: ChildProfile): string => {
+    if (child.subId) return child.subId;
+    return generateSubId(family.familyCode || 'CHA', child.name);
+  };
+
+  const getChildToken = (child: ChildProfile): string => {
+    const subId = ensureChildSubId(child);
+    const tokenPayload: SubAccountToken = {
+      parentId: family.familyCode || 'CHA_FAM',
+      subId: subId,
+      role: 'sub_account',
+      childName: child.name,
+      childGrade: typeof child.grade === 'string' ? child.grade : `Lớp ${child.grade}`,
+      createdAt: Date.now()
+    };
+    return encodeSubAccountToken(tokenPayload);
+  };
+
   const handleCopyMagicLink = (child: ChildProfile) => {
-    const url = new URL(window.location.href);
-    url.searchParams.set('family', family.familyCode || '');
-    url.searchParams.set('child', child.id);
-    navigator.clipboard?.writeText(url.toString());
+    const url = getMagicLink(child);
+    navigator.clipboard?.writeText(url);
     setCopiedLinkId(child.id);
     setTimeout(() => setCopiedLinkId(null), 2500);
   };
 
+  const handleCopyTokenOnly = (child: ChildProfile) => {
+    const token = getChildToken(child);
+    navigator.clipboard?.writeText(token);
+    setCopiedLinkId('token_' + child.id);
+    setTimeout(() => setCopiedLinkId(null), 2500);
+  };
+
   const getMagicLink = (child: ChildProfile) => {
-    const url = new URL(window.location.href);
+    const subId = ensureChildSubId(child);
+    const token = getChildToken(child);
+
+    // Non-blocking background sync of sub-account doc to cloud
+    initSubAccountDoc({
+      parentId: family.familyCode || 'CHA_FAM',
+      subId: subId,
+      childProfile: { ...child, subId }
+    }).catch(err => console.warn('Background sub_account sync error:', err));
+
+    const url = new URL(window.location.origin + window.location.pathname);
+    url.searchParams.set('token', token);
     url.searchParams.set('family', family.familyCode || '');
     url.searchParams.set('child', child.id);
     return url.toString();
@@ -578,6 +621,33 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       return;
     }
 
+    // Check if user directly pasted a SubAccount Token
+    const directDecodedToken = decodeSubAccountToken(val);
+    if (directDecodedToken) {
+      // Auto sign in anonymously and select
+      signInAnonymouslyUser().catch(() => {});
+      if (directDecodedToken.parentId) {
+        setStudentFamilyCode(directDecodedToken.parentId.toUpperCase());
+      }
+      const matchedChild = family.children.find(c => (c.subId && c.subId === directDecodedToken.subId) || c.name === directDecodedToken.childName);
+      if (matchedChild) {
+        setStudentChildId(matchedChild.id);
+      } else {
+        const synChild: ChildProfile = {
+          id: directDecodedToken.subId,
+          subId: directDecodedToken.subId,
+          parentId: directDecodedToken.parentId,
+          name: directDecodedToken.childName || 'Người học',
+          grade: directDecodedToken.childGrade || 'Lớp 7',
+          className: directDecodedToken.childGrade || 'Lớp 7',
+          avatar: '🚀'
+        };
+        onAddChild(synChild);
+        setStudentChildId(synChild.id);
+      }
+      return;
+    }
+
     try {
       let urlObj: URL;
       if (val.startsWith('http://') || val.startsWith('https://')) {
@@ -586,6 +656,34 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
         // Fallback for relative urls or raw query strings
         const testUrl = val.startsWith('?') ? val : '?' + val;
         urlObj = new URL(testUrl, window.location.href);
+      }
+
+      const tokenParam = urlObj.searchParams.get('token');
+      if (tokenParam) {
+        const decoded = decodeSubAccountToken(tokenParam);
+        if (decoded) {
+          signInAnonymouslyUser().catch(() => {});
+          if (decoded.parentId) {
+            setStudentFamilyCode(decoded.parentId.toUpperCase());
+          }
+          const matchedChild = family.children.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
+          if (matchedChild) {
+            setStudentChildId(matchedChild.id);
+          } else {
+            const synChild: ChildProfile = {
+              id: decoded.subId,
+              subId: decoded.subId,
+              parentId: decoded.parentId,
+              name: decoded.childName || 'Người học',
+              grade: decoded.childGrade || 'Lớp 7',
+              className: decoded.childGrade || 'Lớp 7',
+              avatar: '🚀'
+            };
+            onAddChild(synChild);
+            setStudentChildId(synChild.id);
+          }
+          return;
+        }
       }
 
       const famCode = urlObj.searchParams.get('family');
@@ -600,7 +698,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
         setStudentError('Đường link không đúng định dạng Magic Link. Hãy dán đúng Link Kích Hoạt được gửi từ Góc Phụ Huynh nhé!');
       }
     } catch (err) {
-      setStudentError('Đường link không hợp lệ. Hãy dán đúng Link Kích Hoạt được gửi từ Góc Phụ Huynh nhé!');
+      setStudentError('Đường link không hợp lệ. Hãy dán đúng Link Kích Hoạt hoặc Mã Token được gửi từ Góc Phụ Huynh nhé!');
     }
   };
 
@@ -2165,17 +2263,23 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
             >
               <X className="w-4 h-4" />
             </button>
-            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3">
+            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-2">
               <QrCode className="w-6 h-6" />
             </div>
-            <h3 className="text-base font-extrabold text-slate-900 mb-1.5">
+            
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 text-[11px] font-bold mb-2">
+              <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+              <span>Khởi tạo 0ms • Đồng bộ 2 chiều Realtime</span>
+            </div>
+
+            <h3 className="text-base font-extrabold text-slate-900 mb-1">
               Mã QR Đăng Nhập Nhanh
             </h3>
             <p className="text-xs text-slate-600 mb-4 leading-relaxed">
               Quét mã này bằng Zalo hoặc Camera để bé <strong className="text-blue-600">{qrModalChild.name}</strong> vào thẳng góc học tập!
             </p>
             
-            <div className="flex justify-center mb-5 p-4 bg-white rounded-2xl border-2 border-dashed border-blue-200 shadow-sm">
+            <div className="flex justify-center mb-4 p-4 bg-white rounded-2xl border-2 border-dashed border-blue-200 shadow-sm">
               <QRCodeSVG 
                 value={getMagicLink(qrModalChild)} 
                 size={200}
@@ -2183,18 +2287,47 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                 includeMargin={false}
               />
             </div>
-            
-            <button
-              type="button"
-              onClick={() => {
-                handleCopyMagicLink(qrModalChild);
-                setQrModalChild(null);
-              }}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/30 cursor-pointer"
-            >
-              <Link className="w-4 h-4" />
-              <span>Sao chép Link thay vì quét mã</span>
-            </button>
+
+            <div className="space-y-2">
+              <button
+                type="button"
+                onClick={() => {
+                  handleCopyMagicLink(qrModalChild);
+                }}
+                className={`w-full py-2.5 font-bold rounded-xl text-xs transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  copiedLinkId === qrModalChild.id
+                    ? 'bg-emerald-600 text-white shadow-sm'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white shadow-md shadow-blue-600/30'
+                }`}
+              >
+                {copiedLinkId === qrModalChild.id ? (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Đã sao chép Link Kích Hoạt!</span>
+                  </>
+                ) : (
+                  <>
+                    <Link className="w-4 h-4" />
+                    <span>Sao chép Link Kích Hoạt (Kèm Token)</span>
+                  </>
+                )}
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleCopyTokenOnly(qrModalChild);
+                }}
+                className={`w-full py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 font-bold rounded-xl text-xs transition-colors flex items-center justify-center gap-1.5 cursor-pointer ${
+                  copiedLinkId === 'token_' + qrModalChild.id ? 'text-emerald-700 bg-emerald-50 border border-emerald-200' : ''
+                }`}
+              >
+                <KeyRound className="w-3.5 h-3.5 text-slate-500" />
+                <span>
+                  {copiedLinkId === 'token_' + qrModalChild.id ? 'Đã sao chép Mã Token!' : 'Sao chép Mã Token định danh'}
+                </span>
+              </button>
+            </div>
           </div>
         </div>
       )}

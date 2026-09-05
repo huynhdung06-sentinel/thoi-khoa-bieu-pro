@@ -1,5 +1,12 @@
 import { initializeApp } from 'firebase/app';
-import { getAuth, GoogleAuthProvider, signInWithPopup, signOut as firebaseSignOut, onAuthStateChanged } from 'firebase/auth';
+import { 
+  getAuth, 
+  GoogleAuthProvider, 
+  signInWithPopup, 
+  signOut as firebaseSignOut, 
+  onAuthStateChanged,
+  signInAnonymously
+} from 'firebase/auth';
 import { 
   getFirestore, 
   doc, 
@@ -11,10 +18,12 @@ import {
   serverTimestamp, 
   updateDoc,
   query,
-  where
+  where,
+  onSnapshot,
+  Unsubscribe
 } from 'firebase/firestore';
 import firebaseConfig from '../../firebase-applet-config.json';
-import { FamilyAccount, ChildProfile } from '../types';
+import { FamilyAccount, ChildProfile, SubAccountToken } from '../types';
 
 const app = initializeApp(firebaseConfig);
 export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
@@ -334,4 +343,172 @@ export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId:
     return null;
   }
 };
+
+// =========================================================================
+// 🚀 ARCHITECTURE: SUB-ACCOUNT (CHA - CON) OFFLINE-FIRST & REALTIME SYNC
+// =========================================================================
+
+/**
+ * 0ms Client-side Sub-Account Token generator
+ */
+export const generateSubId = (parentId: string, childSuffix?: string): string => {
+  const cleanParent = (parentId || 'FAM').replace(/[^A-Za-z0-9]/g, '').slice(-4).toUpperCase();
+  const rand = Math.random().toString(36).substring(2, 7).toUpperCase();
+  const namePart = childSuffix ? childSuffix.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase() : 'CON';
+  return `CON_${cleanParent}_${namePart}_${rand}`;
+};
+
+/**
+ * Encode SubAccountToken into a lightweight URL-safe Base64 string
+ */
+export const encodeSubAccountToken = (token: SubAccountToken): string => {
+  try {
+    const jsonStr = JSON.stringify(token);
+    return btoa(unescape(encodeURIComponent(jsonStr)))
+      .replace(/\+/g, '-')
+      .replace(/\//g, '_')
+      .replace(/=+$/, '');
+  } catch (err) {
+    console.error('Error encoding token:', err);
+    return '';
+  }
+};
+
+/**
+ * Decode lightweight URL-safe Base64 string back into SubAccountToken
+ */
+export const decodeSubAccountToken = (tokenStr: string): SubAccountToken | null => {
+  try {
+    if (!tokenStr || typeof tokenStr !== 'string') return null;
+    let base64 = tokenStr.replace(/-/g, '+').replace(/_/g, '/');
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+    const jsonStr = decodeURIComponent(escape(atob(base64)));
+    const parsed = JSON.parse(jsonStr);
+    if (parsed && parsed.subId && parsed.role === 'sub_account') {
+      return parsed as SubAccountToken;
+    }
+    return null;
+  } catch (err) {
+    // Fallback: try raw JSON parse in case it was passed unencoded
+    try {
+      const directParsed = JSON.parse(tokenStr);
+      if (directParsed && directParsed.subId) return directParsed;
+    } catch {}
+    console.warn('Could not decode token string:', err);
+    return null;
+  }
+};
+
+/**
+ * Firebase Anonymous Auth for instantaneous, zero-delay sub-account sessions
+ */
+export const signInAnonymouslyUser = async () => {
+  try {
+    if (auth.currentUser) return auth.currentUser;
+    const cred = await signInAnonymously(auth);
+    return cred.user;
+  } catch (err) {
+    console.warn('Anonymous auth offline/fallback:', err);
+    return null;
+  }
+};
+
+/**
+ * Background creation of sub_accounts doc (runs non-blocking 0ms)
+ */
+export const initSubAccountDoc = async (data: {
+  parentId: string;
+  subId: string;
+  childProfile: Partial<ChildProfile>;
+  initialAppState?: any;
+}) => {
+  try {
+    const subRef = doc(db, 'sub_accounts', data.subId);
+    const payload = removeUndefined({
+      subId: data.subId,
+      parentId: data.parentId,
+      role: 'sub_account',
+      childProfile: data.childProfile,
+      status: 'active',
+      createdAt: serverTimestamp(),
+      updatedAt: serverTimestamp(),
+    });
+    await setDoc(subRef, payload, { merge: true });
+
+    if (data.initialAppState) {
+      const dataRef = doc(db, 'sub_accounts', data.subId, 'data', 'current');
+      const cleanState = removeUndefined(data.initialAppState);
+      await setDoc(dataRef, {
+        ...cleanState,
+        updatedAt: serverTimestamp(),
+      }, { merge: true });
+    }
+  } catch (err) {
+    console.error('Background initSubAccountDoc error:', err);
+  }
+};
+
+/**
+ * 2-way Realtime Stream: Subscribe to sub_accounts/{subId}/data/current via onSnapshot
+ */
+export const subscribeSubAccountData = (
+  subId: string, 
+  onData: (data: any) => void,
+  onError?: (err: any) => void
+): Unsubscribe => {
+  const dataRef = doc(db, 'sub_accounts', subId, 'data', 'current');
+  return onSnapshot(
+    dataRef, 
+    (snap) => {
+      if (snap.exists()) {
+        onData(snap.data());
+      } else {
+        onData(null);
+      }
+    },
+    (err) => {
+      console.warn(`[Realtime Sync] Snapshot error for ${subId}:`, err);
+      if (onError) onError(err);
+    }
+  );
+};
+
+/**
+ * Save state directly to sub_accounts/{subId}/data/current
+ */
+export const saveSubAccountData = async (subId: string, appState: any): Promise<boolean> => {
+  try {
+    if (!subId) return false;
+    const cleanState = removeUndefined(appState);
+    const dataRef = doc(db, 'sub_accounts', subId, 'data', 'current');
+    await setDoc(dataRef, {
+      ...cleanState,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error saving sub account data:', err);
+    return false;
+  }
+};
+
+/**
+ * Fetch sub_accounts document definition
+ */
+export const fetchSubAccountDoc = async (subId: string): Promise<any | null> => {
+  try {
+    const subRef = doc(db, 'sub_accounts', subId);
+    const snap = await getDoc(subRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (err) {
+    console.error('Error fetching sub account doc:', err);
+    return null;
+  }
+};
+
 
