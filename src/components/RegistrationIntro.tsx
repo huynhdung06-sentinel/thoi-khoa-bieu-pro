@@ -813,11 +813,11 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
             </div>
           )}
 
-          {/* ----------------- SUB-VIEW: 2 MAIN BUTTONS ----------------- */}
+          {/* ----------------- SUB-VIEW: 3 PRIMARY ACTION CARDS ----------------- */}
           {formMode === 'main' && (
-            <div className="space-y-3.5 pt-1">
+            <div className="space-y-3 pt-1">
               
-              {/* Option 1: Dành cho Phụ Huynh */}
+              {/* Option 1: Dành cho Phụ Huynh - Bắt đầu dùng ngay không cần email */}
               <button
                 type="button"
                 onClick={() => {
@@ -830,65 +830,114 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                     setParentError('');
                   }
                 }}
-                className="w-full py-3.5 px-4 rounded-xl border border-blue-200 hover:border-blue-500 bg-white hover:bg-blue-50/40 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-2xs flex items-center justify-between group cursor-pointer"
+                className="w-full p-4 rounded-2xl border border-blue-200 hover:border-blue-500 bg-gradient-to-r from-blue-50/60 to-white hover:from-blue-50 text-slate-800 transition-all duration-200 shadow-xs hover:shadow-md flex items-center justify-between group cursor-pointer text-left"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base group-hover:bg-blue-100 transition-colors">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-blue-100 text-blue-700 flex items-center justify-center font-bold text-xl shrink-0 group-hover:scale-105 transition-transform">
                     👨‍👩‍👧
                   </div>
-                  <span className="text-slate-800 group-hover:text-blue-700 font-bold">
-                    Phụ huynh
-                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-900 group-hover:text-blue-700 text-sm sm:text-base leading-snug">
+                        {family.parentPin ? 'Đăng Nhập Phụ Huynh' : 'Khởi Tạo Góc Gia Đình'}
+                      </h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-blue-100 text-blue-700">
+                        {family.parentPin ? 'Đã có mã PIN' : 'Dùng ngay 0ms'}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-0.5">
+                      {family.parentPin 
+                        ? 'Quản lý thời khóa biểu, tài khoản con & theo dõi học tập' 
+                        : 'Không cần email! Nhập tên & PIN là vào học ngay lập tức'}
+                    </p>
+                  </div>
                 </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 group-hover:translate-x-0.5 transition-transform" />
+                <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-blue-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
               </button>
 
-              {/* Option 2: Dành cho Học Sinh & Sinh Viên */}
+              {/* Option 2: Nạp tệp sao lưu JSON - Kích hoạt & Tự động đăng nhập máy con */}
+              {onImportBackupData && (
+                <>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    accept=".json"
+                    onChange={onImportBackupData}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    onClick={() => fileInputRef.current?.click()}
+                    className="w-full p-4 rounded-2xl border border-amber-200 hover:border-amber-500 bg-gradient-to-r from-amber-50/60 to-white hover:from-amber-50 text-slate-800 transition-all duration-200 shadow-xs hover:shadow-md flex items-center justify-between group cursor-pointer text-left"
+                  >
+                    <div className="flex items-start gap-3.5">
+                      <div className="w-10 h-10 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-xl shrink-0 group-hover:scale-105 transition-transform">
+                        📂
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h3 className="font-bold text-slate-900 group-hover:text-amber-800 text-sm sm:text-base leading-snug">
+                            Nạp Tệp Sao Lưu JSON
+                          </h3>
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                            Khuyên dùng máy con
+                          </span>
+                        </div>
+                        <p className="text-xs text-slate-500 leading-relaxed mt-0.5">
+                          Chọn file .json từ máy bố mẹ ➔ Tự động đăng nhập &amp; bung bài học ngay
+                        </p>
+                      </div>
+                    </div>
+                    <Upload className="w-5 h-5 text-slate-300 group-hover:text-amber-600 group-hover:-translate-y-0.5 transition-all shrink-0 ml-2" />
+                  </button>
+                </>
+              )}
+
+              {/* Option 3: Dành cho Học Sinh & Sinh Viên qua Mã Gia Đình / QR */}
               <button
                 type="button"
                 onClick={() => setFormMode('student_login')}
-                className="w-full py-3.5 px-4 rounded-xl border border-emerald-200 hover:border-emerald-500 bg-white hover:bg-emerald-50/40 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-2xs flex items-center justify-between group cursor-pointer"
+                className="w-full p-4 rounded-2xl border border-emerald-200 hover:border-emerald-500 bg-gradient-to-r from-emerald-50/60 to-white hover:from-emerald-50 text-slate-800 transition-all duration-200 shadow-xs hover:shadow-md flex items-center justify-between group cursor-pointer text-left"
               >
-                <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-base group-hover:bg-emerald-100 transition-colors">
+                <div className="flex items-start gap-3.5">
+                  <div className="w-10 h-10 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center font-bold text-xl shrink-0 group-hover:scale-105 transition-transform">
                     🎓
                   </div>
-                  <span className="text-slate-800 group-hover:text-emerald-700 font-bold">
-                    Học sinh & Sinh viên
-                  </span>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h3 className="font-bold text-slate-900 group-hover:text-emerald-700 text-sm sm:text-base leading-snug">
+                        Học Sinh &amp; Sinh Viên
+                      </h3>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                        Đồng bộ Cloud
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 leading-relaxed mt-0.5">
+                      Kích hoạt bằng Mã Gia Đình (vd: GD8899) hoặc Quét mã QR
+                    </p>
+                  </div>
                 </div>
-                <ArrowRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 group-hover:translate-x-0.5 transition-transform" />
+                <ArrowRight className="w-5 h-5 text-slate-300 group-hover:text-emerald-600 group-hover:translate-x-1 transition-all shrink-0 ml-2" />
               </button>
 
+              {/* Zero-friction Email Note */}
+              <div className="p-3 rounded-xl bg-slate-50 border border-slate-200/80 text-[11px] text-slate-600 flex items-start gap-2 leading-relaxed">
+                <span className="text-blue-600 font-bold shrink-0 mt-0.5">💡</span>
+                <span>
+                  <b>Không cần tài khoản email phức tạp:</b> Bạn có thể vào học ngay lập tức. Sau này cha mẹ có thể liên kết tài khoản Google trong phần cài đặt để lưu đám mây và xem con học từ xa.
+                </span>
+              </div>
+
               {/* Secondary Options */}
-              <div className="pt-4 flex items-center justify-between text-xs text-slate-400 border-t border-slate-100">
+              <div className="pt-2 flex items-center justify-center text-xs text-slate-400">
                 <button
                   type="button"
                   onClick={handleQuickGuest}
-                  className="hover:text-blue-600 font-medium transition-colors cursor-pointer"
+                  className="hover:text-blue-600 font-medium transition-colors cursor-pointer flex items-center gap-1.5"
                 >
-                  Trải nghiệm nhanh
+                  <span>🚀</span>
+                  <span>Trải nghiệm nhanh 10 phút (Không lưu)</span>
                 </button>
-
-                {onImportBackupData && (
-                  <>
-                    <input
-                      type="file"
-                      ref={fileInputRef}
-                      accept=".json"
-                      onChange={onImportBackupData}
-                      className="hidden"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => fileInputRef.current?.click()}
-                      className="hover:text-blue-600 font-medium transition-colors cursor-pointer flex items-center gap-1"
-                    >
-                      <Upload className="w-3.5 h-3.5" />
-                      <span>Nạp tệp sao lưu</span>
-                    </button>
-                  </>
-                )}
               </div>
 
             </div>

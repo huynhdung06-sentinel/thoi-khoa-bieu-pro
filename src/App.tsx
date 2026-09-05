@@ -1265,16 +1265,51 @@ export default function App() {
         if (Array.isArray(data.studyRecords)) setStudyRecords(data.studyRecords as StudyRecord[]);
         if (Array.isArray(data.documents)) setDocuments(data.documents as DocumentItem[]);
         if (Array.isArray(data.periods)) setPeriods(data.periods as PeriodInfo[]);
+        
+        let activatedChildName = '';
         if (data.family && typeof data.family === 'object') {
-          setFamily(data.family as FamilyAccount);
-          if (Array.isArray(data.family.children) && data.family.children.length > 0) {
-            setActiveChildProfile(data.family.children[0]);
+          const importedFam = data.family as FamilyAccount;
+          setFamily(importedFam);
+
+          if (Array.isArray(importedFam.children) && importedFam.children.length > 0) {
+            const firstChild = importedFam.children[0];
+            setActiveChildProfile(firstChild);
+            activatedChildName = firstChild.name;
+            try {
+              localStorage.setItem('mindmap_remembered_student_id', firstChild.id);
+              if (importedFam.familyCode) {
+                localStorage.setItem('mindmap_remembered_family_code', importedFam.familyCode);
+              }
+            } catch {}
+          }
+
+          if (importedFam.familyCode) {
+            syncFamilyByCodeToCloud(importedFam).catch(console.error);
+
+            // Also sync child data to cloud
+            if (importedFam.children && importedFam.children.length > 0) {
+              const childPayload = {
+                classInfo: data.classInfo || classInfo,
+                timetableSlots: data.timetableSlots || timetableSlots,
+                lessons: data.lessons || lessons,
+                lessonPlans: data.lessonPlans || lessonPlans,
+                studyRecords: data.studyRecords || studyRecords,
+                documents: data.documents || documents,
+                periods: data.periods || periods,
+              };
+              syncChildDataByCodeToCloud(importedFam.familyCode, importedFam.children[0].id, childPayload).catch(console.error);
+            }
           }
         }
 
+        // Tự động đóng màn hình Intro và đăng nhập vào góc học tập máy con
+        setIsIntroOpen(false);
+        setCurrentRole('student');
+        setIsGuestMode(false);
+
         setLastBackupTimestamp();
         refreshBackupStatus();
-        alert('🎉 Đã khôi phục dữ liệu học tập thành công!');
+        alert(`🎉 Đã nạp tệp sao lưu thành công! Đã tự động đăng nhập vào góc học tập ${activatedChildName ? 'của ' + activatedChildName : ''} trên máy này.`);
       }
 
       // Reset input value so user can upload same file again if needed
