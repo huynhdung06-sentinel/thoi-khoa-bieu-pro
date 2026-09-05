@@ -1255,7 +1255,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                 };
 
                 onUpdateFamily(newFamily);
-                await syncFamilyByCodeToCloud(newFamily);
+                syncFamilyByCodeToCloud(newFamily).catch(err => console.error('Background cloud sync error:', err));
 
                 // Close and enter parent mode instantly!
                 setIsRegistrationLightboxOpen(false);

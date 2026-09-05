@@ -230,8 +230,6 @@ export const getChildData = async (userId: string, childId: string) => {
 
 export const syncFamilyByCodeToCloud = async (family: FamilyAccount): Promise<boolean> => {
   try {
-    if (!navigator.onLine) return false;
-
     const rawCode = family.familyCode || '';
     const cleanCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || cleanCode.length < 4) return false;
