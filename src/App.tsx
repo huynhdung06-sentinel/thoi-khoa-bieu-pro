@@ -102,14 +102,21 @@ export default function App() {
   const [family, setFamily] = useState<FamilyAccount>(() => {
     try {
       const saved = getSafeItemSync<FamilyAccount>(`${STORAGE_KEY_PREFIX}family_account`);
-      if (saved && saved.children && saved.children.length > 0) return saved;
+      if (saved && saved.children && saved.children.length > 0) {
+        if (!saved.familyCode) {
+          saved.familyCode = 'GD' + Math.floor(1000 + Math.random() * 9000);
+        }
+        return saved;
+      }
     } catch (e) {
       console.error(e);
     }
     const savedPin = getParentPinFromStorage('1234');
     const savedClass = getSafeItemSync<ClassInfo>(`${STORAGE_KEY_PREFIX}class_info`);
     const studentName = savedClass?.studentName || 'Bảo Nam';
+    const defaultFamilyCode = 'GD' + Math.floor(1000 + Math.random() * 9000);
     return {
+      familyCode: defaultFamilyCode,
       parentName: 'Bố Mẹ',
       parentPin: savedPin,
       children: [
@@ -117,6 +124,11 @@ export default function App() {
         { id: 'child-2', name: 'Hà My', grade: 6, className: '6A2', avatar: '🐱' },
       ]
     };
+  });
+
+  const [isCloudLoading, setIsCloudLoading] = useState<boolean>(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    return Boolean(urlParams.get('family') && urlParams.get('child'));
   });
 
   useEffect(() => {
@@ -172,6 +184,10 @@ export default function App() {
         }
       } catch (err) {
         console.error('Error fetching initial cloud family:', err);
+      } finally {
+        if (!isCancelled) {
+          setIsCloudLoading(false);
+        }
       }
     };
     checkCloudFamily();
@@ -1557,6 +1573,26 @@ export default function App() {
       }));
     }
   };
+
+  if (isCloudLoading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-blue-600 via-indigo-700 to-sky-800 text-white flex flex-col items-center justify-center p-6 font-sans">
+        <div className="max-w-md w-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
+          <div className="w-20 h-20 bg-white/20 rounded-2xl flex items-center justify-center mx-auto shadow-inner text-4xl animate-bounce">
+            ☁️
+          </div>
+          <div className="space-y-2">
+            <h2 className="text-2xl font-black tracking-tight text-white">Đang kết nối không gian học tập...</h2>
+            <p className="text-sm text-blue-100 font-medium">Hệ thống đang đồng bộ dữ liệu gia đình và tiến độ học tập từ đám mây (Cloud Firestore)...</p>
+          </div>
+          <div className="w-full bg-white/20 h-2 rounded-full overflow-hidden">
+            <div className="bg-white h-full rounded-full animate-pulse w-3/4"></div>
+          </div>
+          <div className="text-xs text-blue-200 font-mono">⚡ Đang tải dữ liệu thiết bị từ xa...</div>
+        </div>
+      </div>
+    );
+  }
 
   if (isIntroOpen) {
     return (
