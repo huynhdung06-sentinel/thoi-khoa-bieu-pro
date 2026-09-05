@@ -1368,20 +1368,6 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
 
             <span className="w-px h-3.5 bg-blue-300/70 dark:bg-blue-600/50 self-center shrink-0 mx-0.5" aria-hidden="true" />
 
-            {/* 5. Nộp báo cáo Học Bài (sau Sách Giáo Khoa) */}
-            <button
-              type="button"
-              title="Báo cáo tóm tắt bài học và Sơ đồ tư duy dạng cây"
-              onClick={() => setSelectedSourceType('homework_image')}
-              className={`px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer shrink-0 flex items-center gap-1.5 active:scale-[0.98] ${
-                selectedSourceType === 'homework_image'
-                  ? 'bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-2xs font-bold ring-1 ring-emerald-500/30'
-                  : 'text-slate-700 dark:text-slate-300 hover:text-emerald-700 dark:hover:text-emerald-300 hover:bg-emerald-50 dark:hover:bg-emerald-950/60 font-medium'
-              }`}
-            >
-              <Layers className={`w-3.5 h-3.5 ${selectedSourceType === 'homework_image' ? 'text-emerald-500' : 'text-slate-500 dark:text-slate-400'}`} />
-              <span>Nộp báo cáo Học Bài</span>
-            </button>
           </div>
 
           {/* Right: Mode & Actions */}

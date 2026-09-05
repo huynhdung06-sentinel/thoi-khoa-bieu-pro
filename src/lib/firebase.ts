@@ -230,6 +230,8 @@ export const getChildData = async (userId: string, childId: string) => {
 
 export const syncFamilyByCodeToCloud = async (family: FamilyAccount): Promise<boolean> => {
   try {
+    if (!navigator.onLine) return false;
+
     const rawCode = family.familyCode || '';
     const cleanCode = rawCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || cleanCode.length < 4) return false;
@@ -263,6 +265,8 @@ export const syncFamilyByCodeToCloud = async (family: FamilyAccount): Promise<bo
 
 export const fetchFamilyByCodeFromCloud = async (familyCode: string): Promise<FamilyAccount | null> => {
   try {
+    if (!navigator.onLine) return null;
+
     const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || cleanCode.length < 4) return null;
 
@@ -280,14 +284,20 @@ export const fetchFamilyByCodeFromCloud = async (familyCode: string): Promise<Fa
       securityAnswer: data.securityAnswer || '',
       children: Array.isArray(data.children) ? data.children : [],
     };
-  } catch (err) {
-    console.error('Error fetching family from cloud by code:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('offline')) {
+      console.warn('Network offline, could not fetch family from cloud.');
+    } else {
+      console.error('Error fetching family from cloud by code:', err);
+    }
     return null;
   }
 };
 
 export const syncChildDataByCodeToCloud = async (familyCode: string, childId: string, appState: any): Promise<boolean> => {
   try {
+    if (!navigator.onLine) return false;
+
     const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || !childId) return false;
 
@@ -306,6 +316,8 @@ export const syncChildDataByCodeToCloud = async (familyCode: string, childId: st
 
 export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId: string): Promise<any | null> => {
   try {
+    if (!navigator.onLine) return null;
+
     const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || !childId) return null;
 
@@ -315,8 +327,12 @@ export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId:
       return snap.data();
     }
     return null;
-  } catch (err) {
-    console.error('Error fetching child data by code from cloud:', err);
+  } catch (err: any) {
+    if (err?.message?.includes('offline')) {
+      console.warn('Network offline, could not fetch child data from cloud.');
+    } else {
+      console.error('Error fetching child data by code from cloud:', err);
+    }
     return null;
   }
 };

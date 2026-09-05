@@ -825,24 +825,24 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
           >
             <span>📝 Soạn Bài</span>
           </button>
-          <button 
-            type="button" 
-            onclick="switchLessonTab('homework')" 
-            class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition \${
-              currentLessonTab === 'homework'
-                ? 'bg-blue-600 text-white shadow-xs'
-                : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
-            }"
-          >
-            <span>📤 Nộp báo cáo Học Bài</span>
-            \${homeworkImages.length > 0 ? \`
-              <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold \${
-                currentLessonTab === 'homework' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
-              }">
-                \${homeworkImages.length} ảnh
-              </span>
-            \` : ''}
-          </button>
+// //           <button 
+// //             type="button" 
+// //             onclick="switchLessonTab('homework')" 
+// //             class="px-4 py-2 rounded-xl text-xs sm:text-sm font-bold flex items-center gap-2 cursor-pointer transition \${
+// //               currentLessonTab === 'homework'
+// //                 ? 'bg-blue-600 text-white shadow-xs'
+// //                 : 'bg-slate-100 hover:bg-slate-200 text-slate-700'
+// //             }"
+// //           >
+// //             <span>📤 Nộp báo cáo Học Bài</span>
+// //             \${homeworkImages.length > 0 ? \`
+// //               <span class="px-2 py-0.5 rounded-full text-[10px] font-extrabold \${
+// //                 currentLessonTab === 'homework' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-800'
+// //               }">
+// //                 \${homeworkImages.length} ảnh
+// //               </span>
+// //             \` : ''}
+// //           </button>
         </div>
       \`;
 
@@ -946,39 +946,39 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
           \`);
         }
 
-        // 2. Ghi chú & Tóm tắt báo cáo
-        if (studentNote && studentNote.trim()) {
-          reportCards.push(\`
-            <div class="p-5 sm:p-6 rounded-2xl bg-blue-50/70 border border-blue-200/80 shadow-xs space-y-2">
-              <div class="font-bold text-xs sm:text-sm text-blue-900 flex items-center gap-2">
-                <span>📝 Ghi Chú & Tóm Tắt Của Học Sinh</span>
-              </div>
-              <p class="text-xs sm:text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">\${studentNote}</p>
-            </div>
-          \`);
-        }
-
-        // 3. Ảnh bài nộp của học sinh
-        if (homeworkImages.length > 0) {
-          reportCards.push(\`
-            <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
-              <div class="flex items-center justify-between pb-2 border-b border-slate-100">
-                <span class="font-bold text-xs sm:text-sm text-slate-900">📸 Ảnh Bài Nộp Của Học Sinh (\${homeworkImages.length} ảnh)</span>
-                <span class="text-[11px] text-slate-500 font-medium">Bấm vào ảnh để phóng to</span>
-              </div>
-              <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                \${homeworkImages.map((imgSrc) => \`
-                  <div class="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[3/4] cursor-pointer hover:shadow-md transition" onclick="openLightbox('\${imgSrc.replace(/'/g, "\\\\'")}')">
-                    <img src="\${imgSrc}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="Ảnh bài nộp" loading="lazy" />
-                    <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold">
-                      <span>🔍 Phóng to</span>
-                    </div>
-                  </div>
-                \`).join('')}
-              </div>
-            </div>
-          \`);
-        }
+//         // 2. Ghi chú & Tóm tắt báo cáo
+//         if (studentNote && studentNote.trim()) {
+//           reportCards.push(\`
+//             <div class="p-5 sm:p-6 rounded-2xl bg-blue-50/70 border border-blue-200/80 shadow-xs space-y-2">
+//               <div class="font-bold text-xs sm:text-sm text-blue-900 flex items-center gap-2">
+//                 <span>📝 Ghi Chú & Tóm Tắt Của Học Sinh</span>
+//               </div>
+//               <p class="text-xs sm:text-sm text-blue-800 leading-relaxed whitespace-pre-wrap">\${studentNote}</p>
+//             </div>
+//           \`);
+//         }
+// 
+//         // 3. Ảnh bài nộp của học sinh
+//         if (homeworkImages.length > 0) {
+//           reportCards.push(\`
+//             <div class="p-5 sm:p-6 rounded-2xl bg-white border border-slate-200 shadow-xs space-y-3">
+//               <div class="flex items-center justify-between pb-2 border-b border-slate-100">
+//                 <span class="font-bold text-xs sm:text-sm text-slate-900">📸 Ảnh Bài Nộp Của Học Sinh (\${homeworkImages.length} ảnh)</span>
+//                 <span class="text-[11px] text-slate-500 font-medium">Bấm vào ảnh để phóng to</span>
+//               </div>
+//               <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
+//                 \${homeworkImages.map((imgSrc) => \`
+//                   <div class="group relative rounded-xl overflow-hidden border border-slate-200 bg-slate-100 aspect-[3/4] cursor-pointer hover:shadow-md transition" onclick="openLightbox('\${imgSrc.replace(/'/g, "\\\\'")}')">
+//                     <img src="\${imgSrc}" class="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="Ảnh bài nộp" loading="lazy" />
+//                     <div class="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold">
+//                       <span>🔍 Phóng to</span>
+//                     </div>
+//                   </div>
+//                 \`).join('')}
+//               </div>
+//             </div>
+//           \`);
+//         }
 
         if (reportCards.length === 0) {
           mainTabBody = \`
@@ -1717,67 +1717,26 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
                           </div>
                         )}
 
-                        {/* 2. Ghi chú & Tóm tắt báo cáo */}
-                        {studentNote && studentNote.trim() && (
-                          <div className="p-5 sm:p-6 rounded-2xl bg-blue-50/70 dark:bg-blue-950/30 border border-blue-200/80 dark:border-blue-900/50 shadow-xs space-y-2">
-                            <div className="font-bold text-xs sm:text-sm text-blue-900 dark:text-blue-300 flex items-center gap-2">
-                              <BookOpen className="w-4 h-4" />
-                              <span>Ghi Chú & Tóm Tắt Của Học Sinh</span>
-                            </div>
-                            <p className="text-xs sm:text-sm text-blue-800 dark:text-blue-200 leading-relaxed whitespace-pre-wrap">{studentNote}</p>
+                        {/* Empty state if no mindmap sections */}
+                        {(!mindmapSections || mindmapSections.length === 0) && (
+                          <div className="py-12 px-4 text-center space-y-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-bold">
+                              Chưa có sơ đồ tư duy hoặc báo cáo học bài cho bài học này.
+                            </p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+                              Tạo sơ đồ tư duy trong Thư viện bài học để hiển thị tại đây nhé!
+                            </p>
+                            {onNavigateToLessons && (
+                              <button
+                                type="button"
+                                onClick={() => onNavigateToLessons(currentActiveLesson.subjectName, currentActiveLesson.id)}
+                                className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition cursor-pointer"
+                              >
+                                <BookMarked className="w-4 h-4" />
+                                <span>Mở Thư viện bài học</span>
+                              </button>
+                            )}
                           </div>
-                        )}
-
-                        {/* 3. Ảnh bài nộp của học sinh */}
-                        {homeworkImages.length > 0 ? (
-                          <div className="p-5 sm:p-6 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700/80 shadow-xs space-y-3">
-                            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-700">
-                              <span className="font-bold text-xs sm:text-sm text-slate-900 dark:text-white flex items-center gap-2">
-                                <ImageIcon className="w-4 h-4 text-emerald-600" />
-                                <span>Ảnh Bài Nộp Của Học Sinh ({homeworkImages.length} ảnh)</span>
-                              </span>
-                              <span className="text-[11px] text-slate-500 dark:text-slate-400 font-medium">Bấm vào ảnh để phóng to</span>
-                            </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
-                              {homeworkImages.map((imgSrc, imgIdx) => (
-                                <div 
-                                  key={`hw-img-${imgIdx}`}
-                                  className="group relative rounded-xl overflow-hidden border border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-900 aspect-[3/4] cursor-pointer hover:shadow-md transition"
-                                  onClick={() => {
-                                    setZoomedImage(imgSrc);
-                                    setImageRotation(0);
-                                  }}
-                                >
-                                  <img src={imgSrc} className="w-full h-full object-cover group-hover:scale-105 transition duration-300" alt="Ảnh bài nộp" loading="lazy" />
-                                  <div className="absolute inset-0 bg-black/30 opacity-0 group-hover:opacity-100 transition flex items-center justify-center text-white text-xs font-bold gap-1">
-                                    <ZoomIn className="w-4 h-4" />
-                                    <span>Phóng to</span>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          </div>
-                        ) : (
-                          (!mindmapSections || mindmapSections.length === 0) && !studentNote && (
-                            <div className="py-12 px-4 text-center space-y-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700">
-                              <p className="text-sm sm:text-base text-slate-700 dark:text-slate-300 font-bold">
-                                Chưa có báo cáo học bài cho bài học này.
-                              </p>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                                Học sinh nộp ảnh bài tập hoặc tạo sơ đồ tư duy trong Thư viện bài học để hiển thị tại đây nhé!
-                              </p>
-                              {onNavigateToLessons && (
-                                <button
-                                  type="button"
-                                  onClick={() => onNavigateToLessons(currentActiveLesson.subjectName, currentActiveLesson.id)}
-                                  className="inline-flex items-center gap-1.5 px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-xs shadow-sm transition cursor-pointer"
-                                >
-                                  <BookMarked className="w-4 h-4" />
-                                  <span>Mở Thư viện để nộp bài</span>
-                                </button>
-                              )}
-                            </div>
-                          )
                         )}
                       </div>
                     )}

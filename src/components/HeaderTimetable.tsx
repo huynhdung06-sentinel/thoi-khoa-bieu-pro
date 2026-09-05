@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { UserRole, ClassInfo, DashboardTab, FamilyAccount, ChildProfile } from '../types';
 import { getVietnamCurrentMondayStr, getVietnamTimeParts } from '../utils/dateUtils';
+import { UnifiedFamilyModal, FamilyModalTab } from './UnifiedFamilyModal';
 import { 
   ChevronLeft, 
   ChevronRight, 
@@ -19,8 +20,10 @@ import {
   Loader2,
   Download,
   Upload,
-  ShieldCheck
+  ShieldCheck,
+  X
 } from 'lucide-react';
+import { motion } from 'motion/react';
 
 interface HeaderTimetableProps {
   classInfo: ClassInfo;
@@ -106,6 +109,7 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState<FamilyModalTab>('overview');
   const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
   const [isEditingClass, setIsEditingClass] = useState(false);
   const [tempClass, setTempClass] = useState(classInfo.className);
@@ -337,70 +341,18 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
 
         {/* Right: Switch Profile & Parent Zone */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
-          
-          {/* LOCAL-FIRST: NÚT XUẤT SAO LƯU DỮ LIỆU */}
-          {onExportData && (
-            <button
-              type="button"
-              onClick={onExportData}
-              className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 ${
-                backupStatus?.status === 'warning'
-                  ? 'bg-amber-50 dark:bg-amber-950/50 hover:bg-amber-100 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700 animate-pulse'
-                  : backupStatus?.status === 'pending'
-                  ? 'bg-amber-50/70 dark:bg-amber-950/30 hover:bg-amber-100 text-amber-800 dark:text-amber-300 border-amber-200 dark:border-amber-800'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 text-emerald-800 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
-              }`}
-              title={
-                backupStatus?.status === 'warning'
-                  ? `⚠️ Cần tải file sao lưu! Có ${backupStatus.unsavedCount} mục mới chưa export hoặc lâu chưa tải file.`
-                  : backupStatus?.status === 'pending'
-                  ? `💡 Có ${backupStatus.unsavedCount} thay đổi mới. Bấm để tải file sao lưu về máy!`
-                  : `✓ Dữ liệu đã được sao lưu an toàn (${backupStatus?.lastBackupDateStr || 'Mới nhất'})`
-              }
-            >
-              <Download className="w-3.5 h-3.5 text-current shrink-0" />
-              <span className="hidden md:inline">Tải Sao Lưu</span>
-              {backupStatus && (
-                <span className={`w-2 h-2 rounded-full shrink-0 ${
-                  backupStatus.status === 'warning'
-                    ? 'bg-red-500 ring-2 ring-red-300'
-                    : backupStatus.status === 'pending'
-                    ? 'bg-amber-500'
-                    : 'bg-emerald-500'
-                }`} />
-              )}
-              {backupStatus && backupStatus.unsavedCount > 0 && (
-                <span className="text-[10px] bg-amber-200 dark:bg-amber-800 text-amber-950 dark:text-amber-100 px-1 rounded-full font-black">
-                  +{backupStatus.unsavedCount}
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* LOCAL-FIRST: NÚT KHÔI PHỤC DỮ LIỆU */}
           {onImportData && (
-            <>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".json"
-                onChange={onImportData}
-                className="hidden"
-              />
-              <button
-                type="button"
-                onClick={() => fileInputRef.current?.click()}
-                className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
-                title="Khôi phục thời khóa biểu và dữ liệu học tập từ file sao lưu .json"
-              >
-                <Upload className="w-3.5 h-3.5 shrink-0 text-slate-500 dark:text-slate-400" />
-                <span className="hidden md:inline">Khôi Phục Data</span>
-              </button>
-            </>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json"
+              onChange={onImportData}
+              className="hidden"
+            />
           )}
 
           {/* Guest Mode Cloud Sync Pill */}
-          {isGuestMode && onOpenCloudSync && (
+          {isGuestMode && onOpenCloudSync && currentRole === 'admin' && (
             <button
               type="button"
               onClick={onOpenCloudSync}
@@ -415,231 +367,84 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             </button>
           )}
 
-          {/* Unified Profile Switcher Dropdown */}
-          <div className="relative">
-            <button
-              type="button"
-              onClick={() => setIsProfileMenuOpen(!isProfileMenuOpen)}
-              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-              title="Nhấp để chuyển nhanh tài khoản gia đình"
-            >
-              <span className="text-sm select-none">
-                {currentRole === 'admin' ? '🔑' : (activeChildProfile?.avatar || '🚀')}
-              </span>
-              <span className="font-extrabold truncate max-w-[80px] sm:max-w-[120px]">
-                {currentRole === 'admin' ? (family.parentName || 'Bố Mẹ') : (activeChildProfile?.name || classInfo.studentName)}
-              </span>
-              <ChevronDown className={`w-3.5 h-3.5 text-slate-400 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
-            </button>
-            
-            {isProfileMenuOpen && (
-              <>
-                <div className="fixed inset-0 z-40" onClick={() => setIsProfileMenuOpen(false)} />
-                <div className="absolute right-0 mt-2 w-72 sm:w-80 bg-white dark:bg-slate-900 rounded-2xl shadow-2xl border border-slate-200/80 dark:border-slate-800 overflow-hidden z-50 p-4">
-                  
-                  {/* Guest Notice */}
-                  {isGuestMode && onOpenCloudSync && (
-                    <div className="mb-3 p-3 bg-amber-50 dark:bg-amber-950/40 rounded-xl border border-amber-200 dark:border-amber-800 text-left">
-                      <div className="flex items-center gap-1.5 text-xs font-bold text-amber-900 dark:text-amber-200">
-                        <span>🎮</span>
-                        <span>Đang dùng Chế độ Khách</span>
-                      </div>
-                      <p className="text-[11px] text-amber-800 dark:text-amber-300 mt-1 leading-relaxed">
-                        Thời khóa biểu đang lưu an toàn trên máy này. Bấm nút dưới để đồng bộ lên Google khi cần.
-                      </p>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          onOpenCloudSync();
-                        }}
-                        className="mt-2 w-full py-1.5 px-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1.5 shadow-xs"
-                      >
-                        <span>☁️ Lưu dữ liệu lên Google</span>
-                      </button>
-                    </div>
-                  )}
+          {/* PARENT ROLE: Unified 'Tài Khoản' Button + 50% Screen Lightbox */}
+          {currentRole === 'admin' && (
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalTab('overview');
+                  setIsProfileMenuOpen(true);
+                }}
+                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100/80 text-blue-800 border border-blue-200 text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+                title="Quản lý Tài Khoản Gia Đình"
+              >
+                <span className="text-sm select-none">👤</span>
+                <span>Tài Khoản</span>
+                <ChevronDown className={`w-3.5 h-3.5 text-blue-500 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
+              </button>
+            </div>
+          )}
 
-                  <div className="text-center pb-2 border-b border-slate-100 dark:border-slate-800/80">
-                    <h4 className="font-extrabold text-[11px] text-slate-400 uppercase tracking-wider">Thành viên gia đình</h4>
-                  </div>
-                  
-                  <div className="grid grid-cols-2 gap-2.5 pt-3">
-                    {/* Card Phụ huynh */}
-                    <div
-                      onClick={() => {
-                        if (currentRole !== 'admin') {
-                          setIsProfileMenuOpen(false);
-                          onSelectParent();
-                        }
-                      }}
-                      className={`p-3 rounded-xl border flex flex-col items-center justify-between transition-all select-none relative ${
-                        currentRole === 'admin'
-                          ? 'border-purple-500 bg-purple-50/40 dark:bg-purple-950/20 text-purple-900 dark:text-purple-300 ring-2 ring-purple-500/20'
-                          : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-purple-300 hover:bg-purple-50/20 cursor-pointer'
-                      }`}
-                    >
-                      {currentRole === 'admin' && (
-                        <span className="absolute top-1.5 right-1.5 text-[9px] text-purple-600 dark:text-purple-400 font-bold bg-purple-100 dark:bg-purple-950 px-1.5 py-0.5 rounded-md">✓</span>
-                      )}
-                      <div className="text-2xl mb-1 select-none">🔑</div>
-                      <div className="text-xs font-extrabold text-center leading-tight">
-                        {family.parentName || "Bố Mẹ"}
-                      </div>
-                      <div className="text-[10px] text-slate-400 dark:text-slate-500 text-center mb-1 font-medium">
-                        Phụ huynh
-                      </div>
+          {/* Unified Family Modal rendered for Header */}
+          <UnifiedFamilyModal
+            isOpen={isProfileMenuOpen}
+            onClose={() => setIsProfileMenuOpen(false)}
+            defaultTab={profileModalTab}
+            family={family}
+            onUpdateFamily={() => {}}
+            currentRole={currentRole}
+            activeChildProfile={activeChildProfile}
+            onSelectChild={(child) => {
+              setIsProfileMenuOpen(false);
+              onSelectChild(child);
+            }}
+            onSelectParent={() => {
+              setIsProfileMenuOpen(false);
+              onSelectParent();
+            }}
+            onExportData={() => {
+              setIsProfileMenuOpen(false);
+              onExportData?.();
+            }}
+            onImportData={(e) => {
+              setIsProfileMenuOpen(false);
+              onImportData?.(e);
+            }}
+            onSwitchProfile={() => {
+              setIsProfileMenuOpen(false);
+              onSwitchProfile?.();
+            }}
+            onLogout={() => {
+              setIsProfileMenuOpen(false);
+              setShowLogoutConfirm(true);
+            }}
+            backupStatus={backupStatus}
+            isGuestMode={isGuestMode}
+            onOpenCloudSync={onOpenCloudSync}
+          />
 
-                      {/* Parent-only controls (Cài đặt & Đăng xuất) */}
-                      {currentRole === 'admin' && (
-                        <div className="w-full space-y-1 mt-2 pt-2 border-t border-purple-200/40 dark:border-purple-800/40 shrink-0">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setIsProfileMenuOpen(false);
-                              onOpenSettings();
-                            }}
-                            className="w-full py-1 px-1 text-[10px] font-bold text-purple-700 dark:text-purple-300 bg-purple-100/60 dark:bg-purple-950 hover:bg-purple-200/60 border border-purple-200/50 dark:border-purple-800 rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
-                            title="Mở bảng điều khiển cấu hình"
-                          >
-                            <Settings className="w-2.5 h-2.5" />
-                            <span>Cấu hình</span>
-                          </button>
-                          
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              setShowLogoutConfirm(true);
-                            }}
-                            className="w-full py-1 px-1 text-[10px] font-bold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/40 border border-red-200 dark:border-red-900/40 rounded flex items-center justify-center gap-1 transition-all cursor-pointer"
-                          >
-                            <LogOut className="w-2.5 h-2.5" />
-                            <span>Đăng xuất</span>
-                          </button>
-                        </div>
-                      )}
-                    </div>
+          {/* STUDENT ROLE: Zero Settings. Simply displays Child Name Badge & subtle PIN button to return to Parent */}
+          {currentRole !== 'admin' && (
+            <div className="flex items-center gap-2">
+              {/* Active Child Profile Name Display (Read-Only) */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs font-extrabold text-emerald-800 dark:text-emerald-300 shrink-0">
+                <span className="text-sm select-none">{activeChildProfile?.avatar || '👦'}</span>
+                <span>{activeChildProfile?.name || classInfo.studentName}</span>
+              </div>
 
-                    {/* Cards Học Sinh */}
-                    {family.children.map((child) => {
-                      const isActive = currentRole === 'student' && activeChildProfile?.id === child.id;
-                      return (
-                        <div
-                          key={child.id}
-                          onClick={() => {
-                            if (!isActive) {
-                              setIsProfileMenuOpen(false);
-                              onSelectChild(child);
-                            }
-                          }}
-                          className={`p-3 rounded-xl border flex flex-col items-center justify-center transition-all select-none relative ${
-                            isActive
-                              ? 'border-blue-500 bg-blue-50/40 dark:bg-blue-950/20 text-blue-900 dark:text-blue-300 ring-2 ring-blue-500/20'
-                              : 'border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/40 text-slate-700 dark:text-slate-300 hover:border-blue-300 hover:bg-blue-50/20 cursor-pointer'
-                          }`}
-                        >
-                          {isActive && (
-                            <span className="absolute top-1.5 right-1.5 text-[9px] text-blue-600 dark:text-blue-400 font-bold bg-blue-100 dark:bg-blue-950 px-1.5 py-0.5 rounded-md">✓</span>
-                          )}
-                          <div className="text-2xl mb-1 select-none">{child.avatar || '🚀'}</div>
-                          <div className="text-xs font-extrabold text-center leading-tight truncate w-full">
-                            {child.name}
-                          </div>
-                          <div className="text-[10px] text-slate-400 dark:text-slate-500 text-center truncate w-full">
-                            {child.className || `Lớp ${child.grade}`}
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-
-                  {/* Local-First Backup Section */}
-                  <div className="mt-3 p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700/60 text-left space-y-1.5">
-                    <div className="flex items-center justify-between text-[11px] font-bold">
-                      <span className="flex items-center gap-1 text-slate-700 dark:text-slate-200">
-                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-500" />
-                        Sao lưu cục bộ (Local-First):
-                      </span>
-                      <span className={`px-1.5 py-0.5 rounded text-[10px] font-extrabold ${
-                        backupStatus?.status === 'warning'
-                          ? 'bg-red-100 text-red-800 dark:bg-red-950/80 dark:text-red-300'
-                          : backupStatus?.status === 'pending'
-                          ? 'bg-amber-100 text-amber-800 dark:bg-amber-950/80 dark:text-amber-300'
-                          : 'bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300'
-                      }`}>
-                        {backupStatus?.status === 'warning'
-                          ? '⚠️ Cần tải backup'
-                          : backupStatus?.status === 'pending'
-                          ? '💡 Có mục mới'
-                          : '✓ Đã an toàn'}
-                      </span>
-                    </div>
-                    <div className="text-[10px] text-slate-500 dark:text-slate-400 flex items-center justify-between">
-                      <span>Lần tải gần nhất:</span>
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">
-                        {backupStatus?.lastBackupDateStr || 'Chưa lưu'}
-                      </span>
-                    </div>
-                    <div className="grid grid-cols-2 gap-1.5 pt-1">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          onExportData?.();
-                        }}
-                        className="py-1 px-2 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
-                      >
-                        <Download className="w-3 h-3" />
-                        <span>Tải file .json</span>
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          fileInputRef.current?.click();
-                        }}
-                        className="py-1 px-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 dark:hover:bg-slate-600 text-slate-800 dark:text-slate-200 rounded-lg text-xs font-bold transition-colors cursor-pointer flex items-center justify-center gap-1 shadow-2xs"
-                      >
-                        <Upload className="w-3 h-3" />
-                        <span>Khôi phục file</span>
-                      </button>
-                    </div>
-                  </div>
-
-                  {/* Switch Account or Re-login option */}
-                  <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800 space-y-1 text-center">
-                    {onOpenFamilyCodeCard && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          onOpenFamilyCodeCard();
-                        }}
-                        className="w-full text-xs font-bold text-indigo-600 dark:text-indigo-400 hover:text-indigo-800 dark:hover:text-indigo-300 transition-colors cursor-pointer flex items-center justify-center gap-1.5 py-1.5 px-2 rounded-lg bg-indigo-50 dark:bg-indigo-950/50 hover:bg-indigo-100 border border-indigo-200 dark:border-indigo-800"
-                      >
-                        <span>🔑 Xem Thẻ Đăng Nhập Cho Con</span>
-                      </button>
-                    )}
-
-                    {onSwitchProfile && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setIsProfileMenuOpen(false);
-                          onSwitchProfile();
-                        }}
-                        className="text-xs font-semibold text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200 transition-colors cursor-pointer inline-flex items-center gap-1 py-1 px-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
-                      >
-                        <span>🔄 Chuyển tài khoản / Đổi máy</span>
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-          </div>
+              {/* Pin Switch back to Parent (Requires Family PIN Challenge) */}
+              <button
+                type="button"
+                onClick={onSelectParent}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+                title="Quay lại góc quản lý của Phụ Huynh (Cần nhập mã PIN)"
+              >
+                <span>🔑</span>
+                <span>Góc Phụ Huynh</span>
+              </button>
+            </div>
+          )}
 
           {onOpenAboutStory && (
             <button

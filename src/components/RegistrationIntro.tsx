@@ -30,9 +30,12 @@ import {
   RotateCcw,
   FileJson,
   Loader2,
-  Cloud
+  Cloud,
+  Link,
+  QrCode
 } from 'lucide-react';
 import { fetchFamilyByCodeFromCloud, syncFamilyByCodeToCloud } from '../lib/firebase';
+import { QRCodeSVG } from 'qrcode.react';
 
 interface RegistrationIntroProps {
   family: FamilyAccount;
@@ -128,6 +131,9 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const [parentName, setParentName] = useState(family.parentName || '');
   const [parentPin, setParentPin] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+  const [parentSubMode, setParentSubMode] = useState<'login' | 'register'>(() => {
+    return family.parentPin ? 'login' : 'register';
+  });
   const [customFamilyCode, setCustomFamilyCode] = useState(() => {
     if (family.familyCode) {
       return family.familyCode.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
@@ -156,6 +162,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const [isAnswerVerified, setIsAnswerVerified] = useState(false);
 
   // Lightbox Parent Management State
+  const [isRegistrationLightboxOpen, setIsRegistrationLightboxOpen] = useState(false);
   const [isParentLightboxOpen, setIsParentLightboxOpen] = useState(false);
   const [activeLightboxTab, setActiveLightboxTab] = useState<'children' | 'add_child' | 'settings'>('children');
 
@@ -171,6 +178,10 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const [editChildName, setEditChildName] = useState('');
   const [editChildGrade, setEditChildGrade] = useState('Lớp 7');
   const [editChildAvatar, setEditChildAvatar] = useState('👦');
+  
+  // Magic link state
+  const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [qrModalChild, setQrModalChild] = useState<ChildProfile | null>(null);
 
   // Check if student family code matches
   const isFamilyCodeValid = Boolean(
@@ -193,7 +204,13 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
           if (!isCancelled && cloudFamily) {
             onUpdateFamily(cloudFamily);
             if (cloudFamily.children && cloudFamily.children.length > 0) {
-              setStudentChildId(cloudFamily.children[0].id);
+              setStudentChildId(prev => {
+                // If we already have a childId that matches one of the children in the loaded family, keep it!
+                if (prev && cloudFamily.children.some(c => c.id === prev)) {
+                  return prev;
+                }
+                return cloudFamily.children[0].id;
+              });
             }
             setStudentError('');
           }
@@ -397,8 +414,8 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
     e.preventDefault();
     setParentError('');
 
-    // If already has parent pin, verify pin & open lightbox directly
-    if (family.parentPin) {
+    // If in login mode and family already has parent pin
+    if (parentSubMode === 'login' && family.parentPin) {
       if (parentPin.trim() === family.parentPin) {
         if (parentName.trim() && parentName.trim() !== family.parentName) {
           const updated = {
@@ -408,10 +425,8 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
           onUpdateFamily(updated);
           syncFamilyByCodeToCloud(updated);
         }
-        setLightboxParentName(family.parentName || 'Phụ Huynh');
-        setLightboxParentPin(family.parentPin);
-        setLightboxFamilyCode(family.familyCode || 'GD8899');
-        setIsParentLightboxOpen(true);
+        // Go directly to parent mode inside the app
+        onSelectParent();
         return;
       } else {
         setParentError('Mật khẩu Phụ huynh chưa chính xác!');
@@ -428,10 +443,11 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       setParentError('Mật khẩu Phụ huynh phải từ 4 đến 8 ký tự!');
       return;
     }
-    const cleanFamCode = customFamilyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+    
+    // Auto-generate clean family code if needed (GD + 4 digits)
+    let cleanFamCode = customFamilyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (cleanFamCode.length < 6 || cleanFamCode.length > 8) {
-      setParentError('Mã Gia Đình phải đúng từ 6 đến 8 ký tự (chữ in hoa và số)!');
-      return;
+      cleanFamCode = `GD${Math.floor(1000 + Math.random() * 9000)}`;
     }
 
     const firstChild: ChildProfile = {
@@ -536,6 +552,57 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
     onSelectChild(guestChild);
   };
 
+  const handleCopyMagicLink = (child: ChildProfile) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('family', family.familyCode || '');
+    url.searchParams.set('child', child.id);
+    navigator.clipboard?.writeText(url.toString());
+    setCopiedLinkId(child.id);
+    setTimeout(() => setCopiedLinkId(null), 2500);
+  };
+
+  const getMagicLink = (child: ChildProfile) => {
+    const url = new URL(window.location.href);
+    url.searchParams.set('family', family.familyCode || '');
+    url.searchParams.set('child', child.id);
+    return url.toString();
+  };
+
+  const handlePasteMagicLink = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const val = e.target.value.trim();
+    setStudentError('');
+    
+    if (!val) {
+      setStudentFamilyCode('');
+      return;
+    }
+
+    try {
+      let urlObj: URL;
+      if (val.startsWith('http://') || val.startsWith('https://')) {
+        urlObj = new URL(val);
+      } else {
+        // Fallback for relative urls or raw query strings
+        const testUrl = val.startsWith('?') ? val : '?' + val;
+        urlObj = new URL(testUrl, window.location.href);
+      }
+
+      const famCode = urlObj.searchParams.get('family');
+      const childId = urlObj.searchParams.get('child');
+
+      if (famCode) {
+        setStudentFamilyCode(famCode.toUpperCase());
+        if (childId) {
+          setStudentChildId(childId);
+        }
+      } else {
+        setStudentError('Đường link không đúng định dạng Magic Link. Hãy dán đúng Link Kích Hoạt được gửi từ Góc Phụ Huynh nhé!');
+      }
+    } catch (err) {
+      setStudentError('Đường link không hợp lệ. Hãy dán đúng Link Kích Hoạt được gửi từ Góc Phụ Huynh nhé!');
+    }
+  };
+
   return (
     <div className="min-h-screen w-full flex flex-col md:flex-row bg-slate-900 font-sans text-slate-800 overflow-hidden select-none">
       
@@ -591,72 +658,83 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       <div className="w-full md:w-[40%] min-h-full md:h-screen bg-white flex flex-col justify-center items-center p-6 sm:p-10 md:p-12 lg:p-14 z-20 overflow-y-auto">
         
         {/* Main Center Area */}
-        <div className="w-full max-w-sm mx-auto space-y-8 my-auto">
+        <div className={`w-full max-w-sm mx-auto space-y-6 sm:space-y-8 ${formMode === 'main' ? 'mt-2 sm:mt-6 mb-auto' : 'my-auto'}`}>
           
-          {/* Top Icon + Header */}
-          <div className="text-left space-y-3.5">
-            <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs border border-blue-100">
-              <Users className="w-6 h-6" />
-            </div>
-            <div>
-              <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-                Gia đình học tập
-              </h1>
-              <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-semibold">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
-                <span>Dự án phi lợi nhuận • Hoàn toàn miễn phí.</span>
+          {/* Top Icon + Header (Chỉ hiển thị khi ở màn hình chọn chính) */}
+          {formMode === 'main' && (
+            <div className="text-left space-y-3.5 animate-in fade-in duration-200">
+              <div className="w-12 h-12 rounded-2xl bg-blue-50 text-blue-600 flex items-center justify-center shadow-xs border border-blue-100">
+                <Users className="w-6 h-6" />
               </div>
-            </div>
-
-            {/* Quote Box */}
-            <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border-l-4 border-indigo-500 text-slate-700 text-xs sm:text-sm italic leading-relaxed shadow-2xs">
-              “Sự ép buộc không bao giờ tạo nên sự tự giác. Hãy trao cho con một xuất phát điểm thông minh và chủ động ngay hôm nay!”
-            </div>
-
-            {/* 2 Core Feature Highlights */}
-            <div className="space-y-3 pt-1">
-              <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
-                  🌿
-                </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                    Tự giác học tập
-                  </h4>
-                  <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed mt-0.5">
-                    Hệ thống đồng hành nhắc nhở thông minh, giúp con tự học tự lập mà cha mẹ không cần thúc giục mỗi tối.
-                  </p>
+              <div>
+                <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+                  Gia đình học tập
+                </h1>
+                <div className="mt-2 inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/80 text-xs font-semibold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500"></span>
+                  <span>Dự án phi lợi nhuận • Hoàn toàn miễn phí.</span>
                 </div>
               </div>
 
-              <div className="flex items-start gap-3">
-                <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
-                  📚
+              {/* Quote Box */}
+              <div className="p-3 sm:p-3.5 rounded-xl bg-slate-50 border-l-4 border-indigo-500 text-slate-700 text-xs sm:text-sm italic leading-relaxed shadow-2xs">
+                “Sự ép buộc không bao giờ tạo nên sự tự giác. Hãy trao cho con một xuất phát điểm thông minh và chủ động ngay hôm nay!”
+              </div>
+
+              {/* 2 Core Feature Highlights */}
+              <div className="space-y-3 pt-1">
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-emerald-50 border border-emerald-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
+                    🌿
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                      Tự giác học tập
+                    </h4>
+                    <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed mt-0.5">
+                      Hệ thống đồng hành nhắc nhở thông minh, giúp con tự học tự lập mà cha mẹ không cần thúc giục mỗi tối.
+                    </p>
+                  </div>
                 </div>
-                <div>
-                  <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
-                    Kích hoạt tư duy
-                  </h4>
-                  <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed mt-0.5">
-                    Tự sáng tạo Sơ đồ tư duy, xây dựng Thư viện bài học logic theo chương trình cá nhân hóa.
-                  </p>
+
+                <div className="flex items-start gap-3">
+                  <div className="w-7 h-7 rounded-lg bg-blue-50 border border-blue-100 flex items-center justify-center text-sm shrink-0 mt-0.5">
+                    📚
+                  </div>
+                  <div>
+                    <h4 className="text-xs sm:text-sm font-bold text-slate-900 leading-snug">
+                      Kích hoạt tư duy
+                    </h4>
+                    <p className="text-[11px] sm:text-xs text-slate-500 leading-relaxed mt-0.5">
+                      Tự sáng tạo Sơ đồ tư duy, xây dựng Thư viện bài học logic theo chương trình cá nhân hóa.
+                    </p>
+                  </div>
                 </div>
               </div>
             </div>
-          </div>
+          )}
 
           {/* ----------------- SUB-VIEW: 2 MAIN BUTTONS ----------------- */}
           {formMode === 'main' && (
-            <div className="space-y-3.5 pt-2">
+            <div className="space-y-3.5 pt-1">
               
               {/* Option 1: Dành cho Phụ Huynh */}
               <button
                 type="button"
-                onClick={() => setFormMode('parent_panel')}
-                className="w-full py-3.5 px-4 rounded-xl border border-slate-200 hover:border-blue-500 bg-white hover:bg-blue-50/50 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-xs flex items-center justify-between group cursor-pointer"
+                onClick={() => {
+                  if (family.parentPin) {
+                    setFormMode('parent_panel');
+                    setParentSubMode('login');
+                    setParentError('');
+                  } else {
+                    setIsRegistrationLightboxOpen(true);
+                    setParentError('');
+                  }
+                }}
+                className="w-full py-3.5 px-4 rounded-xl border border-blue-200 hover:border-blue-500 bg-white hover:bg-blue-50/40 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-2xs flex items-center justify-between group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-blue-100/80 text-blue-700 flex items-center justify-center font-bold text-base">
+                  <div className="w-8 h-8 rounded-lg bg-blue-50 text-blue-700 flex items-center justify-center font-bold text-base group-hover:bg-blue-100 transition-colors">
                     👨‍👩‍👧
                   </div>
                   <span className="text-slate-800 group-hover:text-blue-700 font-bold">
@@ -670,10 +748,10 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
               <button
                 type="button"
                 onClick={() => setFormMode('student_login')}
-                className="w-full py-3.5 px-4 rounded-xl border border-slate-200 hover:border-emerald-500 bg-white hover:bg-emerald-50/50 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-xs flex items-center justify-between group cursor-pointer"
+                className="w-full py-3.5 px-4 rounded-xl border border-emerald-200 hover:border-emerald-500 bg-white hover:bg-emerald-50/40 text-slate-800 font-semibold text-sm transition-all duration-200 shadow-2xs flex items-center justify-between group cursor-pointer"
               >
                 <div className="flex items-center gap-3">
-                  <div className="w-8 h-8 rounded-lg bg-emerald-100/80 text-emerald-700 flex items-center justify-center font-bold text-base">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-50 text-emerald-700 flex items-center justify-center font-bold text-base group-hover:bg-emerald-100 transition-colors">
                     🎓
                   </div>
                   <span className="text-slate-800 group-hover:text-emerald-700 font-bold">
@@ -719,7 +797,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
 
           {/* ----------------- SUB-VIEW: STUDENT LOGIN ----------------- */}
           {formMode === 'student_login' && (
-            <form onSubmit={handleStudentLogin} className="space-y-4 pt-1 animate-in fade-in duration-200">
+            <div className="space-y-4 pt-1 animate-in fade-in duration-200">
               <div className="flex items-center justify-between mb-2">
                 <button
                   type="button"
@@ -733,7 +811,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                   <span>Quay lại</span>
                 </button>
                 <span className="text-xs font-bold text-emerald-700 bg-emerald-50/60 px-2.5 py-1 rounded-lg border border-emerald-200/60 uppercase tracking-wider">
-                  Học sinh & Sinh viên
+                  Kích Hoạt TKB
                 </span>
               </div>
 
@@ -744,96 +822,46 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                 </div>
               )}
 
-              {/* Family Code Input */}
-              <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-slate-700">
-                    Mã Gia Đình:
-                  </label>
-                  {isSearchingCloud && (
-                    <span className="text-[11px] font-bold text-emerald-600 flex items-center gap-1">
-                      <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                      Đang tìm trên máy chủ...
-                    </span>
-                  )}
-                </div>
-                <div className="relative">
-                  <input
-                    type="text"
-                    required
-                    placeholder="Nhập mã gia đình (VD: GD8899)"
-                    value={studentFamilyCode}
-                    onChange={(e) => {
-                      setStudentFamilyCode(e.target.value.toUpperCase());
-                      setStudentError('');
-                    }}
-                    className="w-full px-3.5 py-2.5 rounded-xl border border-slate-300 focus:border-emerald-500 focus:ring-1 focus:ring-emerald-500 font-mono text-center text-base font-bold uppercase outline-hidden bg-white text-slate-900"
-                  />
-                  {isSearchingCloud && (
-                    <div className="absolute right-3 top-1/2 -translate-y-1/2">
-                      <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              {/* Verified Family -> Show Child Account Tiles */}
+              {/* Verified Family -> Show Activation Confirmation Card */}
               {isFamilyCodeValid ? (
-                <div className="space-y-3 animate-in fade-in zoom-in-95 duration-150">
-                  {/* Family Greeting Badge */}
-                  <div className="p-2.5 rounded-xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
-                    <span className="text-emerald-900 font-bold flex items-center gap-1.5">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600" />
-                      Gia đình: {family.parentName}
-                    </span>
-                    <span className="text-emerald-700 font-mono text-[11px] font-bold bg-white px-2 py-0.5 rounded border border-emerald-200 flex items-center gap-1">
-                      <Cloud className="w-3 h-3 text-emerald-500" />
-                      {family.familyCode}
-                    </span>
-                  </div>
-
-                  {/* Square Profile Cards */}
-                  <div>
-                    <label className="block text-xs font-bold text-slate-700 mb-2">
-                      Chọn tài khoản của bạn:
-                    </label>
-                    <div className="grid grid-cols-2 gap-2.5">
-                      {family.children && family.children.length > 0 ? (
-                        family.children.map((child) => {
-                          const isSelected = (studentChildId || family.children?.[0]?.id) === child.id;
-                          return (
-                            <button
-                              key={child.id}
-                              type="button"
-                              onClick={() => setStudentChildId(child.id)}
-                              className={`p-3 rounded-xl border flex flex-col items-center justify-center text-center transition-all cursor-pointer ${
-                                isSelected
-                                  ? 'border-2 border-emerald-600 bg-emerald-50 text-slate-900 shadow-xs ring-2 ring-emerald-500/20'
-                                  : 'border-slate-200 bg-white hover:bg-slate-50 text-slate-700 hover:border-slate-300'
-                              }`}
-                            >
-                              <div className="text-3xl mb-1.5 transform hover:scale-110 transition-transform">
-                                {child.avatar || '👦'}
-                              </div>
-                              <span className="text-xs font-bold text-slate-900 truncate w-full">
-                                {child.name}
-                              </span>
-                              <span className="text-[10px] text-slate-500 mt-1 px-2 py-0.5 rounded-md bg-slate-100 font-medium">
-                                {child.className || (child.grade ? `Lớp ${child.grade}` : 'Học sinh')}
-                              </span>
-                            </button>
-                          );
-                        })
-                      ) : (
-                        <div className="col-span-2 text-center py-4 text-xs text-slate-400">
-                          Chưa có tài khoản con nào trong gia đình này.
-                        </div>
-                      )}
+                <div className="space-y-4 animate-in fade-in zoom-in-95 duration-150">
+                  {/* Premium Success Badge */}
+                  <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 text-center">
+                    <div className="w-10 h-10 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center mx-auto mb-2 animate-bounce">
+                      <CheckCircle2 className="w-5 h-5" />
                     </div>
+                    <span className="text-emerald-900 font-extrabold text-sm block">
+                      Đã Kết Nối Thành Công!
+                    </span>
+                    <span className="text-slate-500 text-[11px] block mt-0.5">
+                      Đã nhận diện bàn học của bạn trên hệ thống đám mây
+                    </span>
                   </div>
 
-                  {/* Remember on this device */}
-                  <label className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-50 cursor-pointer text-xs text-slate-600 select-none">
+                  {/* Highlighted active child card */}
+                  {(() => {
+                    const activeChild = family.children?.find(c => c.id === studentChildId) || family.children?.[0];
+                    if (!activeChild) return null;
+                    return (
+                      <div className="p-5 rounded-2xl border-2 border-emerald-500 bg-emerald-50/30 text-center relative overflow-hidden shadow-md">
+                        <div className="absolute top-2 right-2 text-[10px] font-bold text-emerald-700 bg-emerald-100 px-2 py-0.5 rounded-md">
+                          {activeChild.className || (activeChild.grade ? `Lớp ${activeChild.grade}` : 'Học sinh')}
+                        </div>
+                        <div className="text-5xl mb-3 transform hover:scale-110 transition-transform select-none">
+                          {activeChild.avatar || '👦'}
+                        </div>
+                        <h4 className="text-lg font-black text-slate-900">
+                          {activeChild.name}
+                        </h4>
+                        <p className="text-xs text-slate-500 mt-1">
+                          Chào mừng con quay lại góc học tập nhé!
+                        </p>
+                      </div>
+                    );
+                  })()}
+
+                  {/* Remember Device Checkbox */}
+                  <label className="flex items-center gap-2 p-2 rounded-xl hover:bg-slate-50 cursor-pointer text-xs text-slate-600 select-none border border-slate-100 bg-white">
                     <input
                       type="checkbox"
                       checked={rememberDevice}
@@ -841,34 +869,60 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                       className="w-4 h-4 rounded text-emerald-600 focus:ring-emerald-500 cursor-pointer"
                     />
                     <span className="font-semibold text-slate-700">
-                      Ghi nhớ trên máy này (Lần sau vào thẳng)
+                      Ghi nhớ trên máy này (Lần sau tự động vào học)
                     </span>
                   </label>
 
-                  {/* Submit Button */}
+                  {/* Submit Button to enter */}
                   <button
-                    type="submit"
-                    className="w-full py-3 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-xs transition-colors cursor-pointer flex items-center justify-center gap-2"
+                    type="button"
+                    onClick={handleStudentLogin}
+                    className="w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-sm shadow-md shadow-emerald-600/30 transition-all cursor-pointer flex items-center justify-center gap-2 animate-pulse"
                   >
-                    <span>VÀO HỌC NGAY</span>
+                    <span>BẮT ĐẦU VÀO HỌC NGAY</span>
                     <ArrowRight className="w-4 h-4" />
                   </button>
                 </div>
               ) : (
-                /* Prompt when code not valid yet */
-                <div className="space-y-3 pt-1">
-                  <p className="text-[11px] text-slate-500 leading-relaxed bg-slate-50 p-2.5 rounded-xl border border-slate-200">
-                    💡 Nhập mã gia đình do Bố Mẹ cung cấp (Ví dụ: <b className="font-mono text-slate-700">{family.familyCode || 'GD-DEMO'}</b>) để hiển thị các tài khoản học sinh.
-                  </p>
-                  <button
-                    type="submit"
-                    className="w-full py-2.5 px-4 rounded-xl bg-slate-800 hover:bg-slate-900 text-white font-bold text-xs shadow-xs transition-colors cursor-pointer"
-                  >
-                    Kiểm tra & Mở khóa tài khoản
-                  </button>
+                /* Unactivated State - Paste Link UI only */
+                <div className="space-y-4">
+                  <div>
+                    <label className="block text-xs font-extrabold text-emerald-800 mb-2">
+                      <span>🔗 Dán Link Kích Hoạt (Magic Link) vào đây:</span>
+                    </label>
+                    <div className="relative">
+                      <input
+                        type="text"
+                        placeholder="Bấm chuột phải -> Chọn Dán (Paste) đường link..."
+                        onChange={handlePasteMagicLink}
+                        className="w-full px-4 py-3.5 rounded-2xl border-2 border-dashed border-emerald-500 hover:border-emerald-600 focus:border-emerald-600 focus:ring-4 focus:ring-emerald-500/20 text-center text-xs md:text-sm font-bold outline-hidden bg-emerald-50/80 text-slate-900 placeholder:text-emerald-700/80 shadow-md shadow-emerald-600/10 transition-all"
+                      />
+                      {isSearchingCloud && (
+                        <div className="absolute right-3 top-1/2 -translate-y-1/2">
+                          <Loader2 className="w-4 h-4 animate-spin text-emerald-600" />
+                        </div>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Help Card */}
+                  <div className="p-4 rounded-2xl bg-blue-50 border border-blue-100 text-left space-y-2.5">
+                    <h4 className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                      <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+                      Làm sao để lấy Link Kích Hoạt?
+                    </h4>
+                    <ul className="text-[11px] text-slate-600 space-y-1.5 list-disc list-inside">
+                      <li>Bố Mẹ vào mục <b>Phụ Huynh</b> và Đăng nhập bằng mật khẩu gia đình.</li>
+                      <li>Tại thẻ tên của con, bấm nút <b>🔗 Sao chép Link</b> hoặc nút <b>📱 Mã QR</b>.</li>
+                      <li>Bố Mẹ gửi link đó qua Zalo/Messenger cho con hoặc con quét mã QR trên màn hình.</li>
+                    </ul>
+                    <div className="pt-1.5 border-t border-blue-200/60 text-[10px] text-blue-700 font-semibold leading-relaxed">
+                      🔒 Bảo mật: Việc đăng nhập không dùng mật khẩu giúp góc học tập của con an toàn tuyệt đối khỏi kẻ xấu!
+                    </div>
+                  </div>
                 </div>
               )}
-            </form>
+            </div>
           )}
 
           {/* ----------------- SUB-VIEW: PARENT PANEL ----------------- */}
@@ -895,8 +949,42 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                 </div>
               )}
 
-              {/* If family already exists, ask for Password */}
-              {family.parentPin ? (
+              {/* Tab Selector for Parent: Login vs Register */}
+              <div className="grid grid-cols-2 gap-2 p-1.5 bg-slate-100/90 rounded-2xl mb-4 text-xs font-extrabold border border-slate-200">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setParentSubMode('login');
+                    setParentError('');
+                  }}
+                  className={`py-2.5 px-3 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 text-xs ${
+                    parentSubMode === 'login'
+                      ? 'bg-blue-600 text-white shadow-md shadow-blue-600/30 scale-[1.02] ring-2 ring-blue-400/50'
+                      : 'bg-slate-200/70 text-slate-600 hover:bg-slate-200 hover:text-slate-900 font-bold'
+                  }`}
+                >
+                  <span className="text-sm">🔑</span>
+                  <span>Đăng Nhập</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setParentSubMode('register');
+                    setParentError('');
+                  }}
+                  className={`py-2.5 px-3 rounded-xl transition-all duration-200 cursor-pointer flex items-center justify-center gap-1.5 text-xs ${
+                    parentSubMode === 'register'
+                      ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 scale-[1.02] ring-2 ring-emerald-400/50'
+                      : 'bg-slate-200/70 text-slate-600 hover:bg-slate-200 hover:text-slate-900 font-bold'
+                  }`}
+                >
+                  <span className="text-sm">✨</span>
+                  <span>Tạo Gia Đình Mới</span>
+                </button>
+              </div>
+
+              {/* If in login mode and family already has PIN */}
+              {parentSubMode === 'login' && family.parentPin ? (
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
@@ -967,13 +1055,26 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                     <KeyRound className="w-4 h-4" />
                     <span>MỞ GÓC QUẢN LÝ</span>
                   </button>
+
+                  <div className="text-center pt-1">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsRegistrationLightboxOpen(true);
+                        setParentError('');
+                      }}
+                      className="text-xs text-blue-600 hover:text-blue-800 font-bold hover:underline cursor-pointer"
+                    >
+                      Chưa có tài khoản? Tạo gia đình mới ngay
+                    </button>
+                  </div>
                 </div>
               ) : (
-                /* If new, create family account with 6-8 char code & security question */
+                /* If register mode */
                 <div className="space-y-3">
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
-                      Tên Phụ Huynh:
+                      Tên của bạn (Phụ Huynh / Thầy Cô):
                     </label>
                     <input
                       type="text"
@@ -981,54 +1082,13 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                       placeholder="VD: Ba Nam / Mẹ Hương"
                       value={parentName}
                       onChange={(e) => setParentName(e.target.value)}
-                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white font-semibold"
+                      className="w-full px-3 py-2.5 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white font-semibold"
                     />
                   </div>
 
                   <div>
-                    <div className="flex items-center justify-between mb-1">
-                      <label className="block text-xs font-bold text-slate-600">
-                        Mã Gia Đình (6 - 8 ký tự):
-                      </label>
-                      <button
-                        type="button"
-                        onClick={handleGenerateRandomFamilyCode}
-                        className="text-[11px] text-blue-600 hover:text-blue-800 font-bold flex items-center gap-1 cursor-pointer"
-                        title="Tự động tạo mã ngẫu nhiên 6 chữ số"
-                      >
-                        <Dices className="w-3.5 h-3.5" />
-                        <span>Tạo ngẫu nhiên</span>
-                      </button>
-                    </div>
-                    <div className="relative">
-                      <input
-                        type="text"
-                        required
-                        maxLength={8}
-                        placeholder="VD: GD8899 hoặc NAM123"
-                        value={customFamilyCode}
-                        onChange={(e) => {
-                          const clean = e.target.value.toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 8);
-                          setCustomFamilyCode(clean);
-                        }}
-                        className="w-full px-3 py-2 pr-16 rounded-xl border border-slate-300 focus:border-blue-500 text-xs font-mono font-bold tracking-wider outline-hidden bg-white uppercase"
-                      />
-                      <span className={`absolute right-2.5 top-1/2 -translate-y-1/2 text-[10px] font-mono font-bold px-1.5 py-0.5 rounded ${
-                        customFamilyCode.length >= 6 && customFamilyCode.length <= 8
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : 'bg-amber-100 text-amber-700'
-                      }`}>
-                        {customFamilyCode.length}/8
-                      </span>
-                    </div>
-                    <p className="text-[10px] text-slate-400 mt-1">
-                      Mã gồm 6-8 chữ cái/số giúp các con đăng nhập nhanh trên máy riêng.
-                    </p>
-                  </div>
-
-                  <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
-                      Mật khẩu Phụ Huynh (4 - 8 ký tự):
+                      Mật khẩu quản lý (4 - 8 chữ số PIN):
                     </label>
                     <div className="relative">
                       <input
@@ -1038,7 +1098,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                         placeholder="VD: 123456"
                         value={parentPin}
                         onChange={(e) => setParentPin(e.target.value)}
-                        className="w-full px-3 py-2 pr-10 rounded-xl border border-slate-300 focus:border-blue-500 font-mono text-center text-xs tracking-wider outline-hidden bg-white"
+                        className="w-full px-3 py-2.5 pr-10 rounded-xl border border-slate-300 focus:border-blue-500 font-mono text-center text-xs tracking-wider outline-hidden bg-white"
                       />
                       <button
                         type="button"
@@ -1051,30 +1111,6 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                     </div>
                   </div>
 
-                  {/* Security Question Setup */}
-                  <div className="p-3 bg-slate-50 border border-slate-200 rounded-xl space-y-2">
-                    <div className="flex items-center gap-1.5 text-slate-700 font-bold text-[11px]">
-                      <ShieldCheck className="w-3.5 h-3.5 text-blue-600" />
-                      <span>Câu hỏi bảo mật (Dùng khi quên mật khẩu):</span>
-                    </div>
-                    <select
-                      value={parentSecurityQuestion}
-                      onChange={(e) => setParentSecurityQuestion(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs text-slate-700 outline-hidden font-medium"
-                    >
-                      {DEFAULT_SECURITY_QUESTIONS.map((q, idx) => (
-                        <option key={idx} value={q}>{q}</option>
-                      ))}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="Nhập câu trả lời bí mật của bạn..."
-                      value={parentSecurityAnswer}
-                      onChange={(e) => setParentSecurityAnswer(e.target.value)}
-                      className="w-full px-2.5 py-1.5 rounded-lg border border-slate-300 bg-white text-xs outline-hidden"
-                    />
-                  </div>
-
                   <div>
                     <label className="block text-xs font-bold text-slate-600 mb-1">
                       Hồ sơ người học (Con / Học sinh đầu tiên):
@@ -1082,27 +1118,42 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                     <div className="grid grid-cols-2 gap-2">
                       <input
                         type="text"
-                        placeholder="Tên học sinh"
+                        placeholder="Tên học sinh (VD: Minh)"
                         value={childName}
                         onChange={(e) => setChildName(e.target.value)}
-                        className="px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white"
+                        className="px-3 py-2.5 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white font-medium"
                       />
                       <input
                         type="text"
-                        placeholder="Lớp / Khối"
+                        placeholder="Lớp / Khối (VD: Lớp 7)"
                         value={childGrade}
                         onChange={(e) => setChildGrade(e.target.value)}
-                        className="px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white"
+                        className="px-3 py-2.5 rounded-xl border border-slate-300 focus:border-blue-500 text-xs outline-hidden bg-white font-medium"
                       />
                     </div>
                   </div>
 
                   <button
                     type="submit"
-                    className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-xs transition-colors cursor-pointer"
+                    className="w-full py-3 px-4 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm shadow-md shadow-blue-600/20 transition-all cursor-pointer flex items-center justify-center gap-2 mt-2"
                   >
-                    HOÀN TẤT & BẮT ĐẦU
+                    <span>KHỞI TẠO GÓC GIA ĐÌNH 🚀</span>
                   </button>
+
+                  {family.parentPin && (
+                    <div className="text-center pt-1">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setParentSubMode('login');
+                          setParentError('');
+                        }}
+                        className="text-xs text-slate-500 hover:text-slate-800 font-bold hover:underline cursor-pointer"
+                      >
+                        Đã có tài khoản gia đình? Quay lại Đăng Nhập
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </form>
@@ -1111,6 +1162,276 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
         </div>
 
       </div>
+
+      {/* ----------------- REGISTRATION LIGHTBOX MODAL: GÓC QUẢN LÝ PHỤ HUYNH (50% WIDTH) ----------------- */}
+      {isRegistrationLightboxOpen && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200">
+          <div className="bg-white rounded-3xl border border-blue-100 shadow-2xl w-full md:w-[50%] md:max-w-[50%] lg:w-[48%] max-h-[92vh] flex flex-col overflow-hidden text-slate-800 animate-in zoom-in-95 duration-150">
+            
+            {/* Header - Bright Blue Solid Style */}
+            <div className="px-6 py-5 bg-blue-600 text-white flex items-center justify-between shrink-0 relative">
+              <button
+                type="button"
+                onClick={() => setIsRegistrationLightboxOpen(false)}
+                className="absolute top-4 right-4 p-1.5 rounded-full hover:bg-white/10 text-blue-100 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+              <div className="flex items-center gap-3">
+                <div className="w-9 h-9 rounded-xl bg-blue-500 flex items-center justify-center font-bold text-lg shadow-sm border border-blue-400">
+                  👨‍👩‍👧
+                </div>
+                <div>
+                  <h2 className="text-base sm:text-lg font-black tracking-tight uppercase">
+                    Góc Quản Lý Phụ Huynh
+                  </h2>
+                  <p className="text-xs text-blue-100 font-medium">Khởi tạo không gian gia đình học tập thông minh &amp; bảo mật</p>
+                </div>
+              </div>
+            </div>
+
+            {/* Scrollable Registration Form */}
+            <form 
+              onSubmit={async (e) => {
+                e.preventDefault();
+                setParentError('');
+
+                if (!parentName.trim()) {
+                  setParentError('Vui lòng nhập tên Phụ Huynh!');
+                  return;
+                }
+                if (parentPin.length < 4 || parentPin.length > 8) {
+                  setParentError('Mật khẩu PIN phải từ 4 đến 8 ký tự!');
+                  return;
+                }
+                if (!parentSecurityAnswer.trim()) {
+                  setParentError('Vui lòng điền câu trả lời bí mật để tự khôi phục khi quên mật khẩu!');
+                  return;
+                }
+                if (!childName.trim()) {
+                  setParentError('Vui lòng điền tên con / người học đầu tiên!');
+                  return;
+                }
+
+                // Generate family code
+                let cleanFamCode = customFamilyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+                if (cleanFamCode.length < 6 || cleanFamCode.length > 8) {
+                  cleanFamCode = `GD${Math.floor(1000 + Math.random() * 9000)}`;
+                }
+
+                const firstChild: ChildProfile = {
+                  id: 'student_' + Date.now().toString(),
+                  name: childName.trim(),
+                  grade: childGrade,
+                  className: childGrade,
+                  avatar: childAvatar,
+                  studentCode: (childName.trim()).slice(0, 3).toUpperCase() + Math.floor(10 + Math.random() * 90),
+                };
+
+                const newFamily: FamilyAccount = {
+                  familyCode: cleanFamCode,
+                  parentName: parentName.trim(),
+                  parentPin: parentPin.trim(),
+                  securityQuestion: parentSecurityQuestion,
+                  securityAnswer: parentSecurityAnswer.trim(),
+                  children: [firstChild],
+                };
+
+                onUpdateFamily(newFamily);
+                await syncFamilyByCodeToCloud(newFamily);
+
+                // Close and enter parent mode instantly!
+                setIsRegistrationLightboxOpen(false);
+                onSelectParent();
+              }}
+              className="p-6 overflow-y-auto space-y-4 flex-1 text-left"
+            >
+              {parentError && (
+                <div className="p-3 rounded-xl bg-red-50 border border-red-200 text-red-700 text-xs flex items-center gap-2 font-bold animate-pulse">
+                  <AlertCircle className="w-4 h-4 shrink-0 text-red-500" />
+                  <span>{parentError}</span>
+                </div>
+              )}
+
+              {/* Block 1: Bố Mẹ */}
+              <div className="bg-slate-50/70 p-4 rounded-xl border border-slate-200/80 space-y-3.5">
+                <div className="text-[11px] font-black text-blue-600 uppercase tracking-wider border-b border-slate-200 pb-1 flex items-center gap-1.5">
+                  <span>👤</span> Thông tin của Phụ Huynh / Thầy Cô
+                </div>
+                
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Tên của bạn:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: Ba Nam / Mẹ Hương"
+                      value={parentName}
+                      onChange={(e) => setParentName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs font-semibold outline-hidden bg-white shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Mật khẩu PIN quản lý (4-8 ký tự):
+                    </label>
+                    <div className="relative">
+                      <input
+                        type={showPassword ? 'text' : 'password'}
+                        required
+                        maxLength={8}
+                        placeholder="VD: 123456"
+                        value={parentPin}
+                        onChange={(e) => setParentPin(e.target.value)}
+                        className="w-full px-3 py-2 pr-9 rounded-xl border border-slate-300 focus:border-blue-500 font-mono text-center text-xs tracking-wider outline-hidden bg-white shadow-2xs"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => setShowPassword(!showPassword)}
+                        className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                        title={showPassword ? 'Ẩn' : 'Hiện'}
+                      >
+                        {showPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Block 2: Mã gia đình & Bảo mật */}
+              <div className="bg-blue-50/30 p-4 rounded-xl border border-blue-100 space-y-3.5">
+                <div className="text-[11px] font-black text-blue-600 uppercase tracking-wider border-b border-blue-100 pb-1 flex items-center gap-1.5">
+                  <span>🔐</span> Bảo mật gia đình &amp; khôi phục
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Mã gia đình dùng chung (tự động):
+                    </label>
+                    <input
+                      type="text"
+                      maxLength={8}
+                      required
+                      value={customFamilyCode}
+                      onChange={(e) => setCustomFamilyCode(e.target.value.toUpperCase())}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 font-mono font-bold text-center text-xs tracking-widest outline-hidden bg-white text-blue-900 shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Câu hỏi khôi phục:
+                    </label>
+                    <select
+                      value={parentSecurityQuestion}
+                      onChange={(e) => setParentSecurityQuestion(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs font-medium bg-white outline-hidden shadow-2xs"
+                    >
+                      {DEFAULT_SECURITY_QUESTIONS.map((q) => (
+                        <option key={q} value={q}>{q}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1">
+                    Câu trả lời bí mật (Không dấu, ghi nhớ để khôi phục mật khẩu):
+                  </label>
+                  <input
+                    type="text"
+                    required
+                    placeholder="VD: nam 1982 / banh mi"
+                    value={parentSecurityAnswer}
+                    onChange={(e) => setParentSecurityAnswer(e.target.value)}
+                    className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-blue-500 text-xs font-semibold outline-hidden bg-white shadow-2xs"
+                  />
+                </div>
+              </div>
+
+              {/* Block 3: Con đầu tiên */}
+              <div className="bg-emerald-50/15 p-4 rounded-xl border border-emerald-100 space-y-3.5">
+                <div className="text-[11px] font-black text-emerald-600 uppercase tracking-wider border-b border-emerald-100 pb-1 flex items-center gap-1.5">
+                  <span>👦</span> Hồ sơ con / học sinh đầu tiên
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Tên hiển thị của con:
+                    </label>
+                    <input
+                      type="text"
+                      required
+                      placeholder="VD: Minh / Lan"
+                      value={childName}
+                      onChange={(e) => setChildName(e.target.value)}
+                      className="w-full px-3 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 text-xs font-semibold outline-hidden bg-white shadow-2xs"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 mb-1">
+                      Lớp / Khối học:
+                    </label>
+                    <select
+                      value={childGrade}
+                      onChange={(e) => setChildGrade(e.target.value)}
+                      className="w-full px-2.5 py-2 rounded-xl border border-slate-300 focus:border-emerald-500 text-xs font-medium bg-white outline-hidden shadow-2xs"
+                    >
+                      {GRADE_PRESETS.map((gr) => (
+                        <option key={gr} value={gr}>{gr}</option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-bold text-slate-700 mb-1.5">
+                    Chọn nhanh ảnh đại diện của con:
+                  </label>
+                  <div className="flex flex-wrap gap-2 p-2 bg-slate-50 border border-slate-200 rounded-xl">
+                    {AVATAR_OPTIONS.map((av) => (
+                      <button
+                        key={av}
+                        type="button"
+                        onClick={() => setChildAvatar(av)}
+                        className={`text-lg p-1.5 rounded-lg hover:bg-white active:scale-90 transition-all cursor-pointer ${
+                          childAvatar === av ? 'bg-white border border-blue-400 shadow-xs ring-2 ring-blue-100' : 'border border-transparent'
+                        }`}
+                      >
+                        {av}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              {/* Submit Buttons inside form */}
+              <div className="pt-2 flex gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsRegistrationLightboxOpen(false)}
+                  className="flex-1 py-2.5 rounded-xl border border-slate-300 hover:bg-slate-100 text-slate-700 font-bold text-xs transition-colors cursor-pointer text-center"
+                >
+                  Hủy bỏ
+                </button>
+                <button
+                  type="submit"
+                  className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white font-black text-xs shadow-md shadow-blue-600/25 transition-all cursor-pointer text-center flex items-center justify-center gap-1.5"
+                >
+                  <span>KHỞI TẠO GIA ĐÌNH 🚀</span>
+                </button>
+              </div>
+
+            </form>
+          </div>
+        </div>
+      )}
 
       {/* ----------------- 2-TIER FORGOT PASSWORD MODAL ----------------- */}
       {isForgotModalOpen && (
@@ -1523,22 +1844,55 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
                                 </div>
                               </div>
 
-                              <div className="flex items-center gap-1.5">
+                              <div className="flex flex-wrap items-center gap-1.5 mt-2 sm:mt-0">
+                                <button
+                                  type="button"
+                                  onClick={() => handleCopyMagicLink(child)}
+                                  className={`px-2.5 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer border ${
+                                    copiedLinkId === child.id
+                                      ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
+                                      : 'bg-white hover:bg-slate-50 text-slate-700 border-slate-200 hover:border-slate-300'
+                                  }`}
+                                  title="Sao chép link kết nối trực tiếp cho bé"
+                                >
+                                  {copiedLinkId === child.id ? (
+                                    <>
+                                      <Check className="w-3.5 h-3.5" />
+                                      <span className="hidden sm:inline">Đã chép link!</span>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <Link className="w-3.5 h-3.5 text-blue-500" />
+                                      <span className="hidden sm:inline">Sao chép Link</span>
+                                      <span className="sm:hidden">Link</span>
+                                    </>
+                                  )}
+                                </button>
+
+                                <button
+                                  type="button"
+                                  onClick={() => setQrModalChild(child)}
+                                  className="p-1.5 rounded-lg bg-white hover:bg-slate-50 text-slate-700 border border-slate-200 hover:border-slate-300 text-xs font-bold transition-colors cursor-pointer flex items-center gap-1"
+                                  title="Hiển thị mã QR đăng nhập nhanh"
+                                >
+                                  <QrCode className="w-4 h-4 text-slate-600" />
+                                </button>
+                                
                                 <button
                                   type="button"
                                   onClick={() => handleStartEditChild(child)}
-                                  className="p-1.5 rounded-lg text-slate-500 hover:text-blue-600 hover:bg-slate-100 transition-colors cursor-pointer"
+                                  className="p-1.5 rounded-lg text-slate-500 hover:text-amber-600 border border-slate-200 bg-white hover:border-amber-300 hover:bg-amber-50 transition-colors cursor-pointer"
                                   title="Chỉnh sửa hồ sơ"
                                 >
-                                  <Edit2 className="w-4 h-4" />
+                                  <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
                                   onClick={() => handleDeleteChild(child.id)}
-                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 hover:bg-red-50 transition-colors cursor-pointer"
+                                  className="p-1.5 rounded-lg text-slate-400 hover:text-red-600 border border-slate-200 bg-white hover:border-red-300 hover:bg-red-50 transition-colors cursor-pointer"
                                   title="Xóa hồ sơ"
                                 >
-                                  <Trash2 className="w-4 h-4" />
+                                  <Trash2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   type="button"
@@ -1795,6 +2149,51 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
               </button>
             </div>
 
+          </div>
+        </div>
+      )}
+
+      {/* SUB-MODAL: QR CODE */}
+      {qrModalChild && (
+        <div className="fixed inset-0 z-60 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="w-full max-w-sm bg-white border border-slate-200 rounded-3xl p-6 shadow-2xl animate-in zoom-in-95 duration-200 relative text-center">
+            <button
+              type="button"
+              onClick={() => setQrModalChild(null)}
+              className="absolute top-4 right-4 p-1.5 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+            <div className="w-12 h-12 rounded-full bg-blue-100 text-blue-600 flex items-center justify-center mx-auto mb-3">
+              <QrCode className="w-6 h-6" />
+            </div>
+            <h3 className="text-base font-extrabold text-slate-900 mb-1.5">
+              Mã QR Đăng Nhập Nhanh
+            </h3>
+            <p className="text-xs text-slate-600 mb-4 leading-relaxed">
+              Quét mã này bằng Zalo hoặc Camera để bé <strong className="text-blue-600">{qrModalChild.name}</strong> vào thẳng góc học tập!
+            </p>
+            
+            <div className="flex justify-center mb-5 p-4 bg-white rounded-2xl border-2 border-dashed border-blue-200 shadow-sm">
+              <QRCodeSVG 
+                value={getMagicLink(qrModalChild)} 
+                size={200}
+                level="M"
+                includeMargin={false}
+              />
+            </div>
+            
+            <button
+              type="button"
+              onClick={() => {
+                handleCopyMagicLink(qrModalChild);
+                setQrModalChild(null);
+              }}
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl text-sm transition-all flex items-center justify-center gap-1.5 shadow-md shadow-blue-600/30 cursor-pointer"
+            >
+              <Link className="w-4 h-4" />
+              <span>Sao chép Link thay vì quét mã</span>
+            </button>
           </div>
         </div>
       )}

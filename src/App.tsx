@@ -62,6 +62,7 @@ import { ParentDashboardModal } from './components/ParentDashboardModal';
 import { AboutStoryModal } from './components/AboutStoryModal';
 import { BackupReminderModal } from './components/BackupReminderModal';
 import { FamilyCodeCardModal } from './components/FamilyCodeCardModal';
+import { UnifiedFamilyModal } from './components/UnifiedFamilyModal';
 import { 
   getBackupStatus, 
   createBackupPackage, 
@@ -128,20 +129,45 @@ export default function App() {
     }
   }, [family]);
 
-  // Sync latest family data from Cloud on startup
+  // Sync latest family data & Handle Magic Direct Link on startup
   useEffect(() => {
     let isCancelled = false;
     const checkCloudFamily = async () => {
       try {
-        const rememberedCode = localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
-        if (rememberedCode) {
-          const cloudFam = await fetchFamilyByCodeFromCloud(rememberedCode);
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlFamilyCode = urlParams.get('family');
+        const urlChildId = urlParams.get('child');
+        
+        const targetFamilyCode = urlFamilyCode || localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
+        
+        if (targetFamilyCode) {
+          const cloudFam = await fetchFamilyByCodeFromCloud(targetFamilyCode);
           if (!isCancelled && cloudFam) {
-            setFamily(prev => ({
-              ...prev,
-              ...cloudFam,
-              children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
-            }));
+            setFamily(prev => {
+              const updatedFam = {
+                ...prev,
+                ...cloudFam,
+                children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
+              };
+              
+              // Handle Magic Direct Link Auto-login
+              if (urlFamilyCode && urlChildId) {
+                const targetChild = updatedFam.children.find(c => c.id === urlChildId);
+                if (targetChild) {
+                  setActiveChildProfile(targetChild);
+                  localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
+                  localStorage.setItem('mindmap_remembered_family_code', targetFamilyCode);
+                  setIsIntroOpen(false);
+                  
+                  // Clean URL to keep it pretty
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('family');
+                  url.searchParams.delete('child');
+                  window.history.replaceState({}, '', url.toString());
+                }
+              }
+              return updatedFam;
+            });
           }
         }
       } catch (err) {
@@ -2029,17 +2055,33 @@ export default function App() {
         />
       )}
 
-      {/* Modal 8: Parent Dashboard */}
+      {/* Modal 8: Parent Dashboard (Unified Family Modal) */}
       {showParentDashboard && (
-        <ParentDashboardModal
+        <UnifiedFamilyModal
+          isOpen={showParentDashboard}
           onClose={() => setShowParentDashboard(false)}
-          onExitParentMode={() => {
+          defaultTab="parent_dashboard"
+          family={family}
+          onUpdateFamily={setFamily}
+          currentRole={currentRole}
+          activeChildProfile={activeChildProfile}
+          onSelectChild={(child) => {
+            setActiveChildProfile(child);
+            const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
+            const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+              ? rawGrade
+              : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+            setClassInfo((prev) => ({
+              ...prev,
+              studentName: child.name,
+              className: finalClass,
+            }));
             setShowParentDashboard(false);
             setCurrentRole('student');
           }}
-          family={family}
-          onUpdateFamily={setFamily}
-          activeChildId={activeChildProfile?.id}
+          onSelectParent={() => {
+            setCurrentRole('admin');
+          }}
           onSwitchActiveChild={(child) => {
             setActiveChildProfile(child);
             const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
@@ -2057,6 +2099,25 @@ export default function App() {
           onAddChild={handleAddChild}
           onExportData={handleExportData}
           onImportData={handleImportData}
+          onSwitchProfile={() => {
+            try {
+              localStorage.removeItem('mindmap_remembered_student_id');
+            } catch {}
+            setIsIntroOpen(true);
+          }}
+          onLogout={() => {
+            try {
+              localStorage.removeItem('mindmap_remembered_student_id');
+            } catch {}
+            setIsIntroOpen(true);
+          }}
+          backupStatus={backupStatus}
+          isGuestMode={isGuestMode}
+          onOpenCloudSync={() => setShowAccountLinkingModal(true)}
+          onExitParentMode={() => {
+            setShowParentDashboard(false);
+            setCurrentRole('student');
+          }}
         />
       )}
 
@@ -2152,12 +2213,52 @@ export default function App() {
         className={classInfo.className || 'Lớp học'}
       />
 
-      {/* Modal: Family Code & Login Card for Children */}
-      <FamilyCodeCardModal
-        isOpen={showFamilyCodeModal}
-        onClose={() => setShowFamilyCodeModal(false)}
-        family={family}
-      />
+      {/* Modal: Family Code & Login Card for Children (Unified Family Modal) */}
+      {showFamilyCodeModal && (
+        <UnifiedFamilyModal
+          isOpen={showFamilyCodeModal}
+          onClose={() => setShowFamilyCodeModal(false)}
+          defaultTab="qr_cards"
+          family={family}
+          onUpdateFamily={setFamily}
+          currentRole={currentRole}
+          activeChildProfile={activeChildProfile}
+          onSelectChild={(child) => {
+            setActiveChildProfile(child);
+            const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
+            const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+              ? rawGrade
+              : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+            setClassInfo((prev) => ({
+              ...prev,
+              studentName: child.name,
+              className: finalClass,
+            }));
+            setShowFamilyCodeModal(false);
+            setCurrentRole('student');
+          }}
+          onSelectParent={() => {
+            setCurrentRole('admin');
+          }}
+          onExportData={handleExportData}
+          onImportData={handleImportData}
+          onSwitchProfile={() => {
+            try {
+              localStorage.removeItem('mindmap_remembered_student_id');
+            } catch {}
+            setIsIntroOpen(true);
+          }}
+          onLogout={() => {
+            try {
+              localStorage.removeItem('mindmap_remembered_student_id');
+            } catch {}
+            setIsIntroOpen(true);
+          }}
+          backupStatus={backupStatus}
+          isGuestMode={isGuestMode}
+          onOpenCloudSync={() => setShowAccountLinkingModal(true)}
+        />
+      )}
 
       {/* Modal: Demo 10 Minutes Expired Notification */}
       {showDemoExpiredModal && (
