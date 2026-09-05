@@ -26,8 +26,9 @@ import {
   Lock,
   Smartphone
 } from 'lucide-react';
-import { ChildProfile, FamilyAccount, UserRole } from '../types';
+import { ChildProfile, FamilyAccount, UserRole, SubAccountToken } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
+import { generateSubId, encodeSubAccountToken, initSubAccountDoc } from '../lib/firebase';
 
 export type FamilyModalTab = 'overview' | 'qr_cards' | 'parent_dashboard';
 
@@ -160,6 +161,34 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
 
   // Copy helper for QR link
   const getChildLink = (childId: string) => {
+    const child = family.children?.find(c => c.id === childId);
+    const subId = (child && child.subId) ? child.subId : generateSubId(activeFamilyCode, child?.name);
+
+    if (child) {
+      const tokenPayload: SubAccountToken = {
+        parentId: activeFamilyCode,
+        subId: subId,
+        role: 'sub_account',
+        childName: child.name,
+        childGrade: typeof child.grade === 'string' ? child.grade : `Lớp ${child.grade}`,
+        createdAt: Date.now()
+      };
+      const token = encodeSubAccountToken(tokenPayload);
+
+      // Background non-blocking sync
+      initSubAccountDoc({
+        parentId: activeFamilyCode,
+        subId: subId,
+        childProfile: { ...child, subId }
+      }).catch(() => {});
+
+      const url = new URL(window.location.origin + window.location.pathname);
+      url.searchParams.set('token', token);
+      url.searchParams.set('family', activeFamilyCode);
+      url.searchParams.set('child', childId);
+      return url.toString();
+    }
+
     const url = new URL(window.location.origin + window.location.pathname);
     url.searchParams.set('family', activeFamilyCode);
     url.searchParams.set('child', childId);
@@ -878,13 +907,13 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                             onChange={(e) => setNewName(e.target.value)}
                             className="px-3 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
                           />
-                          <select
+                          <input
+                            type="text"
+                            placeholder="Nhập lớp (vd: Lớp 10, 6A1...)"
                             value={newGrade}
                             onChange={(e) => setNewGrade(e.target.value)}
-                            className="px-2 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
-                          >
-                            {GRADE_PRESETS.map(gr => <option key={gr} value={gr}>{gr}</option>)}
-                          </select>
+                            className="px-3 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
+                          />
                         </div>
 
                         <div className="flex gap-1.5 flex-wrap">
@@ -916,18 +945,29 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                                 setAddError('Vui lòng điền tên con!');
                                 return;
                               }
+                              const childSubId = generateSubId(activeFamilyCode, newName.trim());
                               const newChildProfile: ChildProfile = {
                                 id: 'child_' + Date.now().toString(),
+                                subId: childSubId,
+                                parentId: activeFamilyCode,
                                 name: newName.trim(),
-                                grade: newGrade,
-                                className: newGrade,
+                                grade: newGrade.trim() || 'Lớp 7',
+                                className: newGrade.trim() || 'Lớp 7',
                                 avatar: newAvatar,
                                 studentCode: newName.trim().slice(0, 3).toUpperCase() + Math.floor(10 + Math.random() * 90),
                               };
+                              // Background non-blocking sync
+                              initSubAccountDoc({
+                                parentId: activeFamilyCode,
+                                subId: childSubId,
+                                childProfile: newChildProfile
+                              }).catch(() => {});
+
                               onAddChild?.(newChildProfile);
-                              const updatedChildren = [...family.children, newChildProfile];
+                              const updatedChildren = [...(family.children || []), newChildProfile];
                               onUpdateFamily({ ...family, children: updatedChildren });
                               setNewName('');
+                              setNewGrade('Lớp 7');
                               setIsAddingChild(false);
                             }}
                             className="px-3 py-1 bg-blue-600 text-white rounded-lg font-black"
@@ -950,13 +990,13 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                             onChange={(e) => setEditName(e.target.value)}
                             className="px-3 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
                           />
-                          <select
+                          <input
+                            type="text"
+                            placeholder="Nhập lớp (vd: Lớp 10, 6A1...)"
                             value={editGrade}
                             onChange={(e) => setEditGrade(e.target.value)}
-                            className="px-2 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
-                          >
-                            {GRADE_PRESETS.map(gr => <option key={gr} value={gr}>{gr}</option>)}
-                          </select>
+                            className="px-3 py-1.5 rounded-lg border-2 border-slate-300 font-bold bg-white"
+                          />
                         </div>
 
                         <div className="flex gap-1.5 flex-wrap">
@@ -987,12 +1027,12 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                               const updatedChild: ChildProfile = {
                                 ...editingChild,
                                 name: editName.trim(),
-                                grade: editGrade,
-                                className: editGrade,
+                                grade: editGrade.trim() || 'Lớp 7',
+                                className: editGrade.trim() || 'Lớp 7',
                                 avatar: editAvatar,
                               };
                               onEditChild?.(updatedChild);
-                              const updatedChildren = family.children.map(c => c.id === updatedChild.id ? updatedChild : c);
+                              const updatedChildren = (family.children || []).map(c => c.id === updatedChild.id ? updatedChild : c);
                               onUpdateFamily({ ...family, children: updatedChildren });
                               setEditingChild(null);
                             }}

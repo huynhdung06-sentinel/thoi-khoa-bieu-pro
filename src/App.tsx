@@ -1631,6 +1631,14 @@ export default function App() {
   };
 
   const handleAddChild = (child: ChildProfile) => {
+    setFamily((prev) => {
+      const exists = prev.children?.some((c) => c.id === child.id);
+      if (exists) return prev;
+      return {
+        ...prev,
+        children: [...(prev.children || []), child],
+      };
+    });
     if (!activeChildProfile) {
       setActiveChildProfile(child);
       const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
@@ -1801,6 +1809,10 @@ export default function App() {
         activeChildProfile={activeChildProfile}
         onSelectChild={handleSelectChild}
         onSelectParent={handleSwitchToParent}
+        onUpdateFamily={setFamily}
+        onAddChild={handleAddChild}
+        onEditChild={handleEditChild}
+        onDeleteChild={handleDeleteChild}
         isGuestMode={isGuestMode}
         onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         backupStatus={backupStatus}

@@ -69,6 +69,10 @@ interface HeaderTimetableProps {
   };
   onOpenBackupReminder?: () => void;
   onOpenFamilyCodeCard?: () => void;
+  onUpdateFamily?: (family: FamilyAccount) => void;
+  onAddChild?: (child: ChildProfile) => void;
+  onEditChild?: (child: ChildProfile) => void;
+  onDeleteChild?: (childId: string) => void;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -106,6 +110,10 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   backupStatus,
   onOpenBackupReminder,
   onOpenFamilyCodeCard,
+  onUpdateFamily,
+  onAddChild,
+  onEditChild,
+  onDeleteChild,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -392,7 +400,10 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             onClose={() => setIsProfileMenuOpen(false)}
             defaultTab={profileModalTab}
             family={family}
-            onUpdateFamily={() => {}}
+            onUpdateFamily={onUpdateFamily || (() => {})}
+            onAddChild={onAddChild}
+            onEditChild={onEditChild}
+            onDeleteChild={onDeleteChild}
             currentRole={currentRole}
             activeChildProfile={activeChildProfile}
             onSelectChild={(child) => {
