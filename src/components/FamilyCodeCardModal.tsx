@@ -1,7 +1,8 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { FamilyAccount } from '../types';
 import { Copy, Check, QrCode, X, Laptop, Smartphone, Link as LinkIcon, Maximize2 } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
+import { syncFamilyByCodeToCloud } from '../lib/firebase';
 
 interface FamilyCodeCardModalProps {
   isOpen: boolean;
@@ -18,9 +19,15 @@ export const FamilyCodeCardModal: React.FC<FamilyCodeCardModalProps> = ({
   const [copiedChildId, setCopiedChildId] = useState<string | null>(null);
   const [zoomChildId, setZoomChildId] = useState<string | null>(null);
 
+  useEffect(() => {
+    if (isOpen && family) {
+      syncFamilyByCodeToCloud(family).catch(err => console.error('Force sync family on modal open error:', err));
+    }
+  }, [isOpen, family]);
+
   if (!isOpen) return null;
 
-  const familyCode = family.familyCode || 'GD-' + Math.abs(family.parentName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 1000)).toString().slice(0, 4);
+  const familyCode = (family.familyCode || 'GD8899').trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
 
   const getChildLink = (childId: string) => {
     const url = new URL(window.location.origin + window.location.pathname);

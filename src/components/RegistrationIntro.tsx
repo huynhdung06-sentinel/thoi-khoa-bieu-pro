@@ -244,6 +244,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   const [lightboxSecurityQuestion, setLightboxSecurityQuestion] = useState(family.securityQuestion || DEFAULT_SECURITY_QUESTIONS[0]);
   const [lightboxSecurityAnswer, setLightboxSecurityAnswer] = useState(family.securityAnswer || '');
   const [settingsSavedMsg, setSettingsSavedMsg] = useState('');
+  const [isSyncing, setIsSyncing] = useState(false);
 
   // Sync settings when family changes
   useEffect(() => {
@@ -341,7 +342,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
   };
 
   // Save parent settings
-  const handleSaveParentSettings = (e: React.FormEvent) => {
+  const handleSaveParentSettings = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!lightboxParentName.trim()) {
       alert('Vui lòng nhập tên phụ huynh!');
@@ -365,8 +366,16 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       securityAnswer: lightboxSecurityAnswer.trim(),
     };
     onUpdateFamily(updatedFam);
-    syncFamilyByCodeToCloud(updatedFam);
-    setSettingsSavedMsg('Đã cập nhật cài đặt Phụ huynh & Đồng bộ đám mây thành công!');
+    setIsSyncing(true);
+    try {
+      await syncFamilyByCodeToCloud(updatedFam);
+      setSettingsSavedMsg('Đã lưu & đồng bộ tài khoản lên đám mây thành công!');
+    } catch (err) {
+      console.error(err);
+      setSettingsSavedMsg('Lỗi đồng bộ đám mây, vui lòng thử lại!');
+    } finally {
+      setIsSyncing(false);
+    }
     setTimeout(() => setSettingsSavedMsg(''), 2500);
   };
 
@@ -423,7 +432,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
             parentName: parentName.trim(),
           };
           onUpdateFamily(updated);
-          syncFamilyByCodeToCloud(updated);
+          await syncFamilyByCodeToCloud(updated);
         }
         // Go directly to parent mode inside the app
         onSelectParent();
@@ -468,9 +477,17 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       children: [firstChild],
     };
 
-    onUpdateFamily(newFamily);
-    syncFamilyByCodeToCloud(newFamily);
-    setIsParentLightboxOpen(true);
+    setIsSyncing(true);
+    try {
+      onUpdateFamily(newFamily);
+      await syncFamilyByCodeToCloud(newFamily);
+      setIsParentLightboxOpen(true);
+    } catch (err) {
+      console.error(err);
+      setParentError('Không thể đồng bộ lên đám mây, vui lòng kiểm tra kết nối!');
+    } finally {
+      setIsSyncing(false);
+    }
   };
 
   // Handle Verify Security Question in Forgot Password Modal

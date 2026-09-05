@@ -164,7 +164,7 @@ export default function App() {
               
               // Handle Magic Direct Link Auto-login
               if (urlFamilyCode && urlChildId) {
-                const targetChild = updatedFam.children.find(c => c.id === urlChildId);
+                const targetChild = updatedFam.children.find(c => c.id === urlChildId) || updatedFam.children[0];
                 if (targetChild) {
                   setActiveChildProfile(targetChild);
                   localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
