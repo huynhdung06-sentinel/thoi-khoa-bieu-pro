@@ -131,12 +131,33 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = ({
 }) => {
   // 1. Filter & Subject state (Left Menu)
   const [selectedSubject, setSelectedSubject] = useState<string>(() => selectedSubjectParam || subjects[0]?.name || 'Toán');
-  const [selectedVolume, setSelectedVolume] = useState<1 | 2>(1);
+  const [selectedVolume, setSelectedVolume] = useState<1 | 2>(() => selectedVolumeParam || 1);
   const [lessonStatusFilter, setLessonStatusFilter] = useState<'all' | 'uncompleted' | 'completed'>('all');
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [selectedChapter, setSelectedChapter] = useState<string>('all');
-  const [activeLessonModal, setActiveLessonModal] = useState<Lesson | null>(null);
-  const [activeLessonModalTab, setActiveLessonModalTab] = useState<'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page'>('html');
+  const [selectedChapter, setSelectedChapter] = useState<string>(() => selectedChapterParam || 'all');
+  const [activeLessonModal, setActiveLessonModal] = useState<Lesson | null>(() => {
+    if (selectedLessonIdParam) {
+      const found = lessons.find((l) => l.id === selectedLessonIdParam);
+      if (found) return found;
+    }
+    return null;
+  });
+  const [activeLessonModalTab, setActiveLessonModalTab] = useState<'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page'>(() => {
+    try {
+      const savedTab = localStorage.getItem('vulang_active_lesson_tab');
+      if (savedTab && ['html', 'embedded_html', 'youtube', 'homework_image', 'pdf_page'].includes(savedTab)) {
+        return savedTab as any;
+      }
+    } catch {}
+    return 'html';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('vulang_active_lesson_tab', activeLessonModalTab);
+    } catch {}
+  }, [activeLessonModalTab]);
+
   const [lessonHasUnsaved, setLessonHasUnsaved] = useState(false);
   const [requestExitSignal, setRequestExitSignal] = useState(0);
 

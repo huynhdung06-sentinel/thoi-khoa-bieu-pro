@@ -100,7 +100,23 @@ const setParentPinToStorage = (pin: string) => {
 export default function App() {
   const [showParentPin, setShowParentPin] = useState(false);
   const [parentPinCallback, setParentPinCallback] = useState<(() => void) | null>(null);
-  const [showParentDashboard, setShowParentDashboard] = useState(false);
+  const [showParentDashboard, setShowParentDashboard] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}show_parent_dashboard`) === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (showParentDashboard) {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}show_parent_dashboard`, 'true');
+      } else {
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}show_parent_dashboard`);
+      }
+    } catch {}
+  }, [showParentDashboard]);
   const [showAboutStory, setShowAboutStory] = useState(false);
 
   // 0. Family Account Profiles state
@@ -1733,7 +1749,14 @@ export default function App() {
 
   const todayPendingCount = Math.max(0, todayStudySlots.length - todayCompletedCount);
   const todayTotalSlots = todayStudySlots.length;
-  const [hasCelebratedToday, setHasCelebratedToday] = useState(false);
+  const [hasCelebratedToday, setHasCelebratedToday] = useState<boolean>(() => {
+    try {
+      const todayKey = `${STORAGE_KEY_PREFIX}celebrated_${todayInfo.dateStr}`;
+      return localStorage.getItem(todayKey) === 'true';
+    } catch {
+      return true; // Default true on initial mount/reload to avoid hijacking tab on refresh
+    }
+  });
   const [showVictoryModal, setShowVictoryModal] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
   const [capturedImageUrl, setCapturedImageUrl] = useState<string | null>(null);
@@ -1794,16 +1817,23 @@ export default function App() {
 
   useEffect(() => {
     // Reset celebration flag when date changes
-    setHasCelebratedToday(false);
+    try {
+      const todayKey = `${STORAGE_KEY_PREFIX}celebrated_${todayInfo.dateStr}`;
+      setHasCelebratedToday(localStorage.getItem(todayKey) === 'true');
+    } catch {
+      setHasCelebratedToday(false);
+    }
   }, [todayInfo.dateStr]);
 
   useEffect(() => {
     if (todayTotalSlots > 0 && todayPendingCount === 0 && !hasCelebratedToday) {
       setHasCelebratedToday(true);
-      setActiveTab('timetable');
+      try {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}celebrated_${todayInfo.dateStr}`, 'true');
+      } catch {}
       setShowVictoryModal(true);
     }
-  }, [todayPendingCount, todayTotalSlots, hasCelebratedToday]);
+  }, [todayPendingCount, todayTotalSlots, hasCelebratedToday, todayInfo.dateStr]);
 
 
   const handleDeleteChild = async (childId: string) => {

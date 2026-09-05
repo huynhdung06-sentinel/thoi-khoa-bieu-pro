@@ -101,16 +101,69 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
   // 1. Selection states
   const [selectedSubjectName, setSelectedSubjectName] = useState<string>(() => {
     if (initialSubject && initialSubject !== 'all') return initialSubject;
+    try {
+      const savedSubj = localStorage.getItem('vulang_summary_selected_subject');
+      if (savedSubj && subjects.some(s => s.name === savedSubj)) return savedSubj;
+    } catch {}
     return subjects[0]?.name || 'Toán';
   });
 
+  useEffect(() => {
+    try {
+      localStorage.setItem('vulang_summary_selected_subject', selectedSubjectName);
+    } catch {}
+  }, [selectedSubjectName]);
+
   const [searchQuery, setSearchQuery] = useState<string>('');
-  const [viewMode, setViewMode] = useState<'interactive' | 'landing'>('interactive');
+  const [viewMode, setViewMode] = useState<'interactive' | 'landing'>(() => {
+    try {
+      const savedMode = localStorage.getItem('vulang_summary_view_mode');
+      if (savedMode === 'interactive' || savedMode === 'landing') return savedMode;
+    } catch {}
+    return 'interactive';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('vulang_summary_view_mode', viewMode);
+    } catch {}
+  }, [viewMode]);
+
   const [expandedChapters, setExpandedChapters] = useState<Record<string, boolean>>({});
-  const [activeLessonId, setActiveLessonId] = useState<string | null>(initialActiveLessonId || null);
+  const [activeLessonId, setActiveLessonId] = useState<string | null>(() => {
+    if (initialActiveLessonId) return initialActiveLessonId;
+    try {
+      return localStorage.getItem('vulang_summary_active_lesson_id') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (activeLessonId) {
+        localStorage.setItem('vulang_summary_active_lesson_id', activeLessonId);
+      } else {
+        localStorage.removeItem('vulang_summary_active_lesson_id');
+      }
+    } catch {}
+  }, [activeLessonId]);
+
   const [copiedHtml, setCopiedHtml] = useState<boolean>(false);
   const [isFullscreen, setIsFullscreen] = useState<boolean>(false);
-  const [activeLessonTab, setActiveLessonTab] = useState<'notes' | 'homework'>('notes');
+  const [activeLessonTab, setActiveLessonTab] = useState<'notes' | 'homework'>(() => {
+    try {
+      const savedTab = localStorage.getItem('vulang_summary_lesson_tab');
+      if (savedTab === 'notes' || savedTab === 'homework') return savedTab;
+    } catch {}
+    return 'notes';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('vulang_summary_lesson_tab', activeLessonTab);
+    } catch {}
+  }, [activeLessonTab]);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [imageRotation, setImageRotation] = useState<number>(0);
 
