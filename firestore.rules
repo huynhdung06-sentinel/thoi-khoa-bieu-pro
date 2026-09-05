@@ -1,118 +1,34 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    match /{document=**} {
-      allow read, write: if false;
-    }
-
-    function isValidId(id) { return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$'); }
-    function incoming() { return request.resource.data; }
-    function existing() { return resource.data; }
-    function isSignedIn() { return request.auth != null; }
-
-    function isValidFamilyAccount(data) {
-      return data.keys().hasAll(['parentName', 'parentPin', 'ownerId', 'createdAt', 'updatedAt'])
-        && data.keys().size() == 5
-        && data.parentName is string && data.parentName.size() <= 100
-        && data.parentPin is string && data.parentPin.size() <= 8
-        && data.ownerId == request.auth.uid
-        && data.createdAt == request.time
-        && data.updatedAt == request.time;
-    }
-
-    function isValidFamilyAccountUpdate(data) {
-      return data.parentName is string && data.parentName.size() <= 100
-        && data.parentPin is string && data.parentPin.size() <= 8
-        && data.ownerId == request.auth.uid
-        && data.updatedAt == request.time;
-    }
-
-    match /families/{familyId} {
-      allow get: if isSignedIn() && familyId == request.auth.uid;
-      allow create: if isSignedIn() 
-        && familyId == request.auth.uid 
-        && isValidFamilyAccount(incoming());
-      allow update: if isSignedIn() 
-        && familyId == request.auth.uid 
-        && isValidFamilyAccountUpdate(incoming())
-        && incoming().ownerId == existing().ownerId
-        && incoming().createdAt == existing().createdAt
-        && incoming().diff(existing()).affectedKeys().hasOnly(['parentName', 'parentPin', 'updatedAt']);
-      allow delete: if isSignedIn() && familyId == request.auth.uid;
-
-      match /children/{childId} {
-        allow read: if isSignedIn() && familyId == request.auth.uid;
-        
-        function isValidChildProfile(data) {
-          return data.keys().hasAll(['name', 'grade', 'className', 'avatar', 'createdAt', 'updatedAt'])
-            && data.keys().size() == 6
-            && data.name is string && data.name.size() <= 100
-            && data.grade is number
-            && data.className is string && data.className.size() <= 50
-            && data.avatar is string && data.avatar.size() <= 10
-            && data.createdAt == request.time
-            && data.updatedAt == request.time;
-        }
-
-        function isValidChildProfileUpdate(data) {
-          return data.name is string && data.name.size() <= 100
-            && data.grade is number
-            && data.className is string && data.className.size() <= 50
-            && data.avatar is string && data.avatar.size() <= 10
-            && data.updatedAt == request.time;
-        }
-
-        allow create: if isSignedIn() 
-          && familyId == request.auth.uid
-          && isValidId(childId)
-          && isValidChildProfile(incoming());
-        allow update: if isSignedIn() 
-          && familyId == request.auth.uid
-          && isValidChildProfileUpdate(incoming())
-          && incoming().createdAt == existing().createdAt
-          && incoming().diff(existing()).affectedKeys().hasOnly(['name', 'grade', 'className', 'avatar', 'updatedAt']);
-        allow delete: if isSignedIn() && familyId == request.auth.uid;
-
-        match /data/appState {
-          allow read: if isSignedIn() && familyId == request.auth.uid;
-          
-          allow create, update: if isSignedIn() 
-            && familyId == request.auth.uid
-            && incoming().updatedAt == request.time;
-        }
-      }
-    }
-
-    // Cloud Family Sync via Family Code (Cross-Device Instant Access)
+    // Cho phép đồng bộ dữ liệu gia đình qua Mã Gia Đình (Family Code)
     match /families_by_code/{familyCode} {
-      allow read: if true;
-      allow create, update: if familyCode is string 
-        && familyCode.size() >= 4 
-        && familyCode.size() <= 12
-        && incoming().familyCode is string
-        && incoming().parentName is string
-        && incoming().parentPin is string;
-      allow delete: if false;
+      allow read, write: if true;
 
       match /children_data/{childId} {
         allow read, write: if true;
       }
     }
 
-    // Luật cho Tài khoản Con (sub_accounts) - Hỗ trợ QR Token 0ms & Đồng bộ 2 chiều Realtime
+    // Cho phép đồng bộ tài khoản con (Sub-accounts)
     match /sub_accounts/{subId} {
-      allow read: if true;
-      allow create, update: if true;
-      allow delete: if isSignedIn();
-
+      allow read, write: if true;
       match /data/{document=**} {
         allow read, write: if true;
       }
     }
 
-    // Luật cho Tài khoản Cha (parent_accounts)
+    // Cho phép tài khoản cha mẹ
     match /parent_accounts/{parentId} {
       allow read, write: if true;
+    }
+
+    // Cho phép tài khoản gia đình
+    match /families/{familyId} {
+      allow read, write: if true;
+      match /{allChildren=**} {
+        allow read, write: if true;
+      }
     }
   }
 }
