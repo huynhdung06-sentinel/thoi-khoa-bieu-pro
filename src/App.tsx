@@ -313,10 +313,12 @@ export default function App() {
   const [linkingError, setLinkingError] = useState<string>('');
 
   // 1. Dashboard Tab Navigation with Local Persistence (Remembers active session on F5)
+  const VALID_DASHBOARD_TABS: DashboardTab[] = ['timetable', 'lessons', 'knowledge_summary', 'analytics', 'mindmap_gallery'];
+
   const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
     try {
       const savedTab = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_dashboard_tab`) as DashboardTab | null;
-      if (savedTab && ['timetable', 'library', 'plans', 'exams', 'reports', 'settings'].includes(savedTab)) {
+      if (savedTab && VALID_DASHBOARD_TABS.includes(savedTab)) {
         return savedTab;
       }
     } catch {}
@@ -331,8 +333,42 @@ export default function App() {
   }, [activeTab]);
 
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
-  const [selectedLessonIdForLibrary, setSelectedLessonIdForLibrary] = useState<string | undefined>(undefined);
-  const [selectedSubjectForLibrary, setSelectedSubjectForLibrary] = useState<string | undefined>(undefined);
+  
+  const [selectedLessonIdForLibrary, setSelectedLessonIdForLibrary] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}selected_lesson_id`) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  const [selectedSubjectForLibrary, setSelectedSubjectForLibrary] = useState<string | undefined>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}selected_subject`) || undefined;
+    } catch {
+      return undefined;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      if (selectedLessonIdForLibrary) {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}selected_lesson_id`, selectedLessonIdForLibrary);
+      } else {
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}selected_lesson_id`);
+      }
+    } catch {}
+  }, [selectedLessonIdForLibrary]);
+
+  useEffect(() => {
+    try {
+      if (selectedSubjectForLibrary) {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}selected_subject`, selectedSubjectForLibrary);
+      } else {
+        localStorage.removeItem(`${STORAGE_KEY_PREFIX}selected_subject`);
+      }
+    } catch {}
+  }, [selectedSubjectForLibrary]);
 
   // Local-First Backup Sentinel
   const [backupStatus, setBackupStatus] = useState(() => getBackupStatus());
@@ -635,7 +671,21 @@ export default function App() {
     selectedVolume?: 1 | 2;
     selectedChapter?: string;
     currentLessonTitle?: string;
-  }>({});
+  }>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}library_breadcrumb`);
+      if (saved) return JSON.parse(saved);
+    } catch {}
+    return {};
+  });
+
+  useEffect(() => {
+    try {
+      if (Object.keys(libraryBreadcrumb).length > 0) {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}library_breadcrumb`, JSON.stringify(libraryBreadcrumb));
+      }
+    } catch {}
+  }, [libraryBreadcrumb]);
 
   // Hidden File input ref for import
   const fileImportInputRef = useRef<HTMLInputElement | null>(null);
