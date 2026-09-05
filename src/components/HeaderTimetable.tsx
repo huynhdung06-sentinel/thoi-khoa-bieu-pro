@@ -77,6 +77,8 @@ interface HeaderTimetableProps {
   onDeleteChild?: (childId: string) => void;
   onManualSync?: () => Promise<boolean> | void;
   isCloudSyncing?: boolean;
+  isCloudAutoSaving?: boolean;
+  lastCloudSyncSuccess?: Date | null;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -120,6 +122,8 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   onDeleteChild,
   onManualSync,
   isCloudSyncing = false,
+  isCloudAutoSaving = false,
+  lastCloudSyncSuccess = null,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -382,7 +386,7 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             </button>
           )}
 
-          {/* Cloud Manual Sync Button */}
+          {/* Cloud Auto & Manual Sync Indicator / Button */}
           {onManualSync && family.familyCode && (
             <button
               type="button"
@@ -393,23 +397,25 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
                   setTimeout(() => setSyncSuccessBadge(false), 3000);
                 }
               }}
-              disabled={isCloudSyncing}
+              disabled={isCloudSyncing || isCloudAutoSaving}
               className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                syncSuccessBadge
+                isCloudSyncing || isCloudAutoSaving
+                  ? 'bg-amber-50 text-amber-900 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800'
+                  : syncSuccessBadge
                   ? 'bg-emerald-600 text-white border border-emerald-700'
                   : 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
               }`}
-              title="Đồng bộ toàn bộ Thời khóa biểu & Dữ liệu của con lên đám mây Firebase ngay lập tức"
+              title="Dữ liệu được tự động lưu ngầm. Bạn cũng có thể bấm vào đây để ép lưu ngay lập tức lên Firebase!"
             >
-              {isCloudSyncing ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+              {isCloudSyncing || isCloudAutoSaving ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
               ) : syncSuccessBadge ? (
                 <Check className="w-3.5 h-3.5 text-white" />
               ) : (
                 <Cloud className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
               )}
               <span className="hidden sm:inline">
-                {isCloudSyncing ? 'Đang lưu...' : syncSuccessBadge ? 'Đã lưu xong!' : 'Đồng bộ đám mây'}
+                {isCloudSyncing || isCloudAutoSaving ? 'Đang tự lưu ngầm...' : syncSuccessBadge ? 'Đã lưu xong!' : 'Đã lưu đám mây'}
               </span>
             </button>
           )}

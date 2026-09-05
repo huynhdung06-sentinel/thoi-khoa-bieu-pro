@@ -312,8 +312,24 @@ export default function App() {
   const [isLinkingAccount, setIsLinkingAccount] = useState<boolean>(false);
   const [linkingError, setLinkingError] = useState<string>('');
 
-  // 1. Dashboard Tab Navigation
-  const [activeTab, setActiveTab] = useState<DashboardTab>('timetable');
+  // 1. Dashboard Tab Navigation with Local Persistence (Remembers active session on F5)
+  const [activeTab, setActiveTab] = useState<DashboardTab>(() => {
+    try {
+      const savedTab = localStorage.getItem(`${STORAGE_KEY_PREFIX}active_dashboard_tab`) as DashboardTab | null;
+      if (savedTab && ['timetable', 'library', 'plans', 'exams', 'reports', 'settings'].includes(savedTab)) {
+        return savedTab;
+      }
+    } catch {}
+    return 'timetable';
+  });
+
+  // Automatically remember active tab on change
+  useEffect(() => {
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}active_dashboard_tab`, activeTab);
+    } catch {}
+  }, [activeTab]);
+
   const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState(false);
   const [selectedLessonIdForLibrary, setSelectedLessonIdForLibrary] = useState<string | undefined>(undefined);
   const [selectedSubjectForLibrary, setSelectedSubjectForLibrary] = useState<string | undefined>(undefined);
@@ -557,12 +573,16 @@ export default function App() {
     };
   }, [activeChildProfile?.subId, isHydrated]);
 
+  const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
+  const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
+
   // Child-specific Save Effects to Firebase & Cloud by Family Code & SubAccount Realtime
   useEffect(() => {
     if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
     
-    // Create a debounce timer to avoid too many writes
-    const timer = setTimeout(() => {
+    setIsCloudAutoSaving(true);
+    // Fast, responsive 600ms debounce timer for seamless real-time syncing
+    const timer = setTimeout(async () => {
       const payload = {
         classInfo,
         subjects,
@@ -574,16 +594,25 @@ export default function App() {
         periods
       };
 
-      if (effectiveUserId) {
-        saveChildData(effectiveUserId, activeChildProfile.id, payload).catch(console.error);
+      try {
+        const promises: Promise<any>[] = [];
+        if (effectiveUserId) {
+          promises.push(saveChildData(effectiveUserId, activeChildProfile.id, payload));
+        }
+        if (family.familyCode) {
+          promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload));
+        }
+        if (activeChildProfile.subId) {
+          promises.push(saveSubAccountData(activeChildProfile.subId, payload));
+        }
+        await Promise.all(promises);
+        setLastCloudSyncSuccess(new Date());
+      } catch (err) {
+        console.error('Cloud auto-save error:', err);
+      } finally {
+        setIsCloudAutoSaving(false);
       }
-      if (family.familyCode) {
-        syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload).catch(console.error);
-      }
-      if (activeChildProfile.subId) {
-        saveSubAccountData(activeChildProfile.subId, payload).catch(console.error);
-      }
-    }, 1500);
+    }, 600);
     
     return () => clearTimeout(timer);
   }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode]);
@@ -1977,6 +2006,8 @@ export default function App() {
         onDeleteChild={handleDeleteChild}
         onManualSync={handleManualCloudSync}
         isCloudSyncing={isCloudSyncingManual}
+        isCloudAutoSaving={isCloudAutoSaving}
+        lastCloudSyncSuccess={lastCloudSyncSuccess}
         isGuestMode={isGuestMode}
         onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         backupStatus={backupStatus}
