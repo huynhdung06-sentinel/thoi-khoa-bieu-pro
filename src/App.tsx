@@ -242,7 +242,7 @@ export default function App() {
   // Active child profile & Auto-login for remembered device
   const [activeChildProfile, setActiveChildProfile] = useState<ChildProfile | null>(() => {
     try {
-      const rememberedId = localStorage.getItem('mindmap_remembered_student_id');
+      const rememberedId = localStorage.getItem('mindmap_remembered_student_id') || localStorage.getItem(`${STORAGE_KEY_PREFIX}active_child_id`);
       if (rememberedId && family.children && family.children.length > 0) {
         const found = family.children.find(c => c.id === rememberedId);
         if (found) return found;
@@ -250,16 +250,33 @@ export default function App() {
     } catch (e) {
       console.error(e);
     }
-    return family.children[0] || null;
+    return (family.children && family.children.length > 0) ? family.children[0] : null;
   });
 
-  // Màn hình Intro: Nếu máy con đã được ghi nhớ -> vào thẳng! Nếu chưa -> mở màn hình chọn hồ sơ / đăng nhập
+  useEffect(() => {
+    if (activeChildProfile?.id) {
+      try {
+        localStorage.setItem('mindmap_remembered_student_id', activeChildProfile.id);
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, activeChildProfile.id);
+      } catch (e) {
+        console.error(e);
+      }
+    }
+  }, [activeChildProfile?.id]);
+
+  // Màn hình Intro: Nếu máy con đã được ghi nhớ hoặc đã đăng nhập -> vào thẳng! Nếu chưa -> mở màn hình chọn hồ sơ / đăng nhập
   const [isIntroOpen, setIsIntroOpen] = useState<boolean>(() => {
     try {
-      const rememberedId = localStorage.getItem('mindmap_remembered_student_id');
-      if (rememberedId && family.children && family.children.length > 0) {
-        const found = family.children.find(c => c.id === rememberedId);
-        if (found) return false; // Auto skip intro into student app
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('token') || (urlParams.get('family') && urlParams.get('child'))) {
+        return false;
+      }
+      const introDismissed = localStorage.getItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
+      const rememberedId = localStorage.getItem('mindmap_remembered_student_id') || localStorage.getItem(`${STORAGE_KEY_PREFIX}active_child_id`);
+      const savedRole = localStorage.getItem(`${STORAGE_KEY_PREFIX}role`);
+
+      if (introDismissed === 'true' || rememberedId || savedRole === 'admin') {
+        return false; // Auto skip intro into app
       }
     } catch (e) {
       console.error(e);
@@ -1523,6 +1540,17 @@ export default function App() {
       className: finalClass,
     }));
     setCurrentRole('student');
+    try {
+      localStorage.setItem('mindmap_remembered_student_id', child.id);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, child.id);
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
+      if (family.familyCode) {
+        localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
+      }
+    } catch (e) {
+      console.error(e);
+    }
     setIsIntroOpen(false);
   };
 
@@ -1538,6 +1566,15 @@ export default function App() {
           studentName: family.parentName,
         }));
         setCurrentRole('admin');
+        try {
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
+          if (family.familyCode) {
+            localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
+          }
+        } catch (e) {
+          console.error(e);
+        }
       });
       setShowParentPin(true);
     } else {
@@ -1547,6 +1584,15 @@ export default function App() {
         studentName: family.parentName,
       }));
       setCurrentRole('admin');
+      try {
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
+        if (family.familyCode) {
+          localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
+        }
+      } catch (e) {
+        console.error(e);
+      }
     }
   };
 
@@ -1729,6 +1775,17 @@ export default function App() {
             className: finalClass,
           }));
           setCurrentRole('student');
+          try {
+            localStorage.setItem('mindmap_remembered_student_id', child.id);
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, child.id);
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
+            if (family.familyCode) {
+              localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
+            }
+          } catch (e) {
+            console.error(e);
+          }
           setIsIntroOpen(false);
         }}
         onAddChild={(newChildData) => {
@@ -1751,6 +1808,15 @@ export default function App() {
             studentName: family.parentName,
           }));
           setCurrentRole('admin');
+          try {
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
+            if (family.familyCode) {
+              localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
+            }
+          } catch (e) {
+            console.error(e);
+          }
           setIsIntroOpen(false);
           setShowParentDashboard(true);
         }}
@@ -1821,12 +1887,17 @@ export default function App() {
         onSwitchProfile={() => {
           try {
             localStorage.removeItem('mindmap_remembered_student_id');
+            localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_child_id`);
+            localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
           } catch {}
           setIsIntroOpen(true);
         }}
         onLogout={() => {
           try {
             localStorage.removeItem('mindmap_remembered_student_id');
+            localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_child_id`);
+            localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
+            localStorage.removeItem(`${STORAGE_KEY_PREFIX}role`);
           } catch {}
           setIsIntroOpen(true);
         }}
