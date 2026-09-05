@@ -366,16 +366,8 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       securityAnswer: lightboxSecurityAnswer.trim(),
     };
     onUpdateFamily(updatedFam);
-    setIsSyncing(true);
-    try {
-      await syncFamilyByCodeToCloud(updatedFam);
-      setSettingsSavedMsg('Đã lưu & đồng bộ tài khoản lên đám mây thành công!');
-    } catch (err) {
-      console.error(err);
-      setSettingsSavedMsg('Lỗi đồng bộ đám mây, vui lòng thử lại!');
-    } finally {
-      setIsSyncing(false);
-    }
+    syncFamilyByCodeToCloud(updatedFam).catch(err => console.error('Cloud sync error:', err));
+    setSettingsSavedMsg('Đã lưu & đồng bộ tài khoản lên đám mây thành công!');
     setTimeout(() => setSettingsSavedMsg(''), 2500);
   };
 
@@ -432,7 +424,7 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
             parentName: parentName.trim(),
           };
           onUpdateFamily(updated);
-          await syncFamilyByCodeToCloud(updated);
+          syncFamilyByCodeToCloud(updated).catch(err => console.error('Cloud sync error:', err));
         }
         // Go directly to parent mode inside the app
         onSelectParent();
@@ -477,17 +469,9 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
       children: [firstChild],
     };
 
-    setIsSyncing(true);
-    try {
-      onUpdateFamily(newFamily);
-      await syncFamilyByCodeToCloud(newFamily);
-      setIsParentLightboxOpen(true);
-    } catch (err) {
-      console.error(err);
-      setParentError('Không thể đồng bộ lên đám mây, vui lòng kiểm tra kết nối!');
-    } finally {
-      setIsSyncing(false);
-    }
+    onUpdateFamily(newFamily);
+    syncFamilyByCodeToCloud(newFamily).catch(err => console.error('Cloud sync error:', err));
+    setIsParentLightboxOpen(true);
   };
 
   // Handle Verify Security Question in Forgot Password Modal
