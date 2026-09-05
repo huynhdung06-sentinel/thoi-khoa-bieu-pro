@@ -498,6 +498,26 @@ export default function App() {
           setLessonPlans(defaultPlans);
           setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
           setDocuments(INITIAL_DOCUMENTS);
+
+          // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately!
+          if (family.familyCode) {
+            const initialPayload = {
+              classInfo: {
+                ...INITIAL_CLASS_INFO,
+                studentName: activeChildProfile.name,
+                className: finalClass,
+                weekStartDate: currentMonday
+              },
+              timetableSlots: INITIAL_TIMETABLE_SLOTS,
+              subjects: SUBJECTS_LIST,
+              periods: STANDARD_PERIODS,
+              lessons: INITIAL_LESSONS_BANK,
+              lessonPlans: defaultPlans,
+              studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
+              documents: INITIAL_DOCUMENTS
+            };
+            syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+          }
         }
 
       } catch (err) {
@@ -600,6 +620,42 @@ export default function App() {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   const [isLessonBankOpen, setIsLessonBankOpen] = useState(false);
   const [isSettingsOpen, setIsSettingsOpen] = useState(false);
+  const [isCloudSyncingManual, setIsCloudSyncingManual] = useState(false);
+
+  // Manual Instant Sync to Cloud
+  const handleManualCloudSync = async (): Promise<boolean> => {
+    if (!activeChildProfile || !family.familyCode) return false;
+    setIsCloudSyncingManual(true);
+    try {
+      const payload = {
+        classInfo,
+        subjects,
+        timetableSlots,
+        lessons,
+        lessonPlans,
+        studyRecords,
+        documents,
+        periods
+      };
+
+      if (family.familyCode) {
+        await syncFamilyByCodeToCloud(family);
+        await syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload);
+      }
+      if (effectiveUserId) {
+        await saveChildData(effectiveUserId, activeChildProfile.id, payload);
+      }
+      if (activeChildProfile.subId) {
+        await saveSubAccountData(activeChildProfile.subId, payload);
+      }
+      return true;
+    } catch (e) {
+      console.error('Error in manual sync:', e);
+      return false;
+    } finally {
+      setIsCloudSyncingManual(false);
+    }
+  };
 
   // Link Guest Account to Google Cloud
   const handleExecuteAccountLinking = async () => {
@@ -1919,6 +1975,8 @@ export default function App() {
         onAddChild={handleAddChild}
         onEditChild={handleEditChild}
         onDeleteChild={handleDeleteChild}
+        onManualSync={handleManualCloudSync}
+        isCloudSyncing={isCloudSyncingManual}
         isGuestMode={isGuestMode}
         onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         backupStatus={backupStatus}

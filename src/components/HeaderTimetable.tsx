@@ -21,6 +21,8 @@ import {
   Download,
   Upload,
   ShieldCheck,
+  Cloud,
+  Check,
   X
 } from 'lucide-react';
 import { motion } from 'motion/react';
@@ -73,6 +75,8 @@ interface HeaderTimetableProps {
   onAddChild?: (child: ChildProfile) => void;
   onEditChild?: (child: ChildProfile) => void;
   onDeleteChild?: (childId: string) => void;
+  onManualSync?: () => Promise<boolean> | void;
+  isCloudSyncing?: boolean;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -114,6 +118,8 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   onAddChild,
   onEditChild,
   onDeleteChild,
+  onManualSync,
+  isCloudSyncing = false,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -123,6 +129,7 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   const [tempClass, setTempClass] = useState(classInfo.className);
   const [isEditingStudent, setIsEditingStudent] = useState(false);
   const [tempStudent, setTempStudent] = useState(classInfo.studentName || '');
+  const [syncSuccessBadge, setSyncSuccessBadge] = useState(false);
 
   // Live real-time digital clock in Vietnam UTC+7 timezone
   const [timeParts, setTimeParts] = useState(() => getVietnamTimeParts());
@@ -371,6 +378,38 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
               <span className="hidden sm:inline font-bold">Khách</span>
               <span className="text-[11px] bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded font-black flex items-center gap-1">
                 ☁️ Lưu Google
+              </span>
+            </button>
+          )}
+
+          {/* Cloud Manual Sync Button */}
+          {onManualSync && family.familyCode && (
+            <button
+              type="button"
+              onClick={async () => {
+                const res = await onManualSync();
+                if (res !== false) {
+                  setSyncSuccessBadge(true);
+                  setTimeout(() => setSyncSuccessBadge(false), 3000);
+                }
+              }}
+              disabled={isCloudSyncing}
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0 ${
+                syncSuccessBadge
+                  ? 'bg-emerald-600 text-white border border-emerald-700'
+                  : 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
+              }`}
+              title="Đồng bộ toàn bộ Thời khóa biểu & Dữ liệu của con lên đám mây Firebase ngay lập tức"
+            >
+              {isCloudSyncing ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-sky-600" />
+              ) : syncSuccessBadge ? (
+                <Check className="w-3.5 h-3.5 text-white" />
+              ) : (
+                <Cloud className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+              )}
+              <span className="hidden sm:inline">
+                {isCloudSyncing ? 'Đang lưu...' : syncSuccessBadge ? 'Đã lưu xong!' : 'Đồng bộ đám mây'}
               </span>
             </button>
           )}

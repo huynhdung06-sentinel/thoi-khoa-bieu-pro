@@ -37,12 +37,24 @@ import {
 import { 
   fetchFamilyByCodeFromCloud, 
   syncFamilyByCodeToCloud,
+  syncChildDataByCodeToCloud,
   generateSubId,
   encodeSubAccountToken,
   decodeSubAccountToken,
   initSubAccountDoc,
   signInAnonymouslyUser
 } from '../lib/firebase';
+import { 
+  INITIAL_CLASS_INFO, 
+  STANDARD_PERIODS, 
+  INITIAL_TIMETABLE_SLOTS, 
+  INITIAL_LESSONS_BANK, 
+  INITIAL_DOCUMENTS,
+  generateInitialLessonPlans, 
+  generateInitialStudyRecords,
+  SUBJECTS_LIST 
+} from '../data/mockData';
+import { getVietnamCurrentMondayStr } from '../utils/dateUtils';
 import { SubAccountToken } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -480,6 +492,27 @@ export const RegistrationIntro: React.FC<RegistrationIntroProps> = ({
 
     onUpdateFamily(newFamily);
     syncFamilyByCodeToCloud(newFamily).catch(err => console.error('Cloud sync error:', err));
+
+    // 🚀 Instant Initial Sync of child data to Firebase Firestore
+    const currentMonday = getVietnamCurrentMondayStr();
+    const defaultPlans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
+    const initialPayload = {
+      classInfo: {
+        ...INITIAL_CLASS_INFO,
+        studentName: firstChild.name,
+        className: firstChild.className || firstChild.grade || 'Lớp 10',
+        weekStartDate: currentMonday
+      },
+      timetableSlots: INITIAL_TIMETABLE_SLOTS,
+      subjects: SUBJECTS_LIST,
+      periods: STANDARD_PERIODS,
+      lessons: INITIAL_LESSONS_BANK,
+      lessonPlans: defaultPlans,
+      studyRecords: generateInitialStudyRecords(defaultPlans, firstChild.name),
+      documents: INITIAL_DOCUMENTS
+    };
+    syncChildDataByCodeToCloud(cleanFamCode, firstChild.id, initialPayload).catch(err => console.error('Child sync error:', err));
+
     setIsParentLightboxOpen(true);
   };
 
