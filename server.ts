@@ -1,5 +1,6 @@
 import express from "express";
 import path from "path";
+import { processSyncPush, processSyncPull } from "./server/syncEngine.ts";
 
 async function startServer() {
   const app = express();
@@ -33,6 +34,32 @@ async function startServer() {
 
   app.get("/api/health", (req, res) => {
     res.status(200).json({ status: "ok", message: "Server is healthy", time: new Date().toISOString() });
+  });
+
+  // Sync API Endpoints (Phase 2B)
+  app.post("/api/sync", async (req, res) => {
+    try {
+      const { childId, mutations } = req.body || {};
+      const result = await processSyncPush(childId, mutations);
+      res.status(result.status).json(result.body);
+    } catch (err: unknown) {
+      console.error("POST /api/sync error:", err);
+      res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+    }
+  });
+
+  app.get("/api/sync", async (req, res) => {
+    try {
+      const childId = req.query.childId as string;
+      const sinceVersion = req.query.sinceVersion !== undefined ? Number(req.query.sinceVersion) : NaN;
+      const limit = req.query.limit ? Number(req.query.limit) : 50;
+
+      const result = await processSyncPull(childId, sinceVersion, limit);
+      res.status(result.status).json(result.body);
+    } catch (err: unknown) {
+      console.error("GET /api/sync error:", err);
+      res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
+    }
   });
 
   // Vite middleware for development; static file serving for production
