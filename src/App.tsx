@@ -563,7 +563,40 @@ export default function App() {
         setStudentParentUserId(user.uid);
         try {
           localStorage.setItem(`${STORAGE_KEY_PREFIX}student_parent_uid`, user.uid);
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
         } catch {}
+        
+        const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
+        setClassInfo((prev) => ({
+          ...prev,
+          studentName: prev.studentName && prev.studentName !== 'Nguyễn Văn An' ? prev.studentName : studentRealName,
+        }));
+        
+        setActiveChildProfile((prev) => {
+          if (prev && prev.id === user.uid) return prev;
+          return {
+            id: user.uid,
+            name: studentRealName,
+            grade: 6,
+            className: 'Lớp 6A',
+            avatar: '🚀',
+            studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase(),
+          };
+        });
+        
+        setIsIntroOpen(false);
+      } else {
+        setStudentParentUserId(null);
+        try {
+          localStorage.removeItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
+        } catch {}
+        
+        // Nếu không có user đăng nhập và không phải đang trong phiên Demo 10 phút -> ép hiển thị màn hình Đăng nhập
+        const isGuest = localStorage.getItem(`${STORAGE_KEY_PREFIX}is_guest`) === 'true';
+        if (!isGuest) {
+          setActiveChildProfile(null);
+          setIsIntroOpen(true);
+        }
       }
     });
     return () => unsubscribe();
@@ -1140,11 +1173,13 @@ export default function App() {
     try {
       const user = await signInWithGoogle();
       if (user) {
+        setCurrentUser(user);
         if (role === 'student') {
           const childId = user.uid;
+          const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
           const childProfile: ChildProfile = {
             id: childId,
-            name: user.displayName || 'Học sinh',
+            name: studentRealName,
             grade: 6,
             className: 'Lớp 6A',
             avatar: '🚀',
@@ -1153,8 +1188,8 @@ export default function App() {
           setActiveChildProfile(childProfile);
           setClassInfo((prev) => ({
             ...prev,
-            studentName: childProfile.name,
-            className: 'Lớp 6A'
+            studentName: studentRealName,
+            className: prev.className || 'Lớp 6A'
           }));
           setCurrentRole('student');
           setIsGuestMode(false);
@@ -1185,6 +1220,39 @@ export default function App() {
       console.error('Error in Google Auth login:', err);
       alert('Đăng nhập Google không thành công. Vui lòng thử lại sau!');
     }
+  };
+
+  const handleLogout = async () => {
+    try {
+      await signOut();
+    } catch (err) {
+      console.error('Signout error:', err);
+    }
+    setCurrentUser(null);
+    setStudentParentUserId(null);
+    setActiveChildProfile(null);
+    setIsGuestMode(false);
+    setDemoTimeRemaining(null);
+
+    try {
+      localStorage.removeItem('mindmap_remembered_student_id');
+      localStorage.removeItem('mindmap_remembered_family_code');
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_child_id`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}role`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
+      localStorage.removeItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
+      localStorage.removeItem('vulang_saved_student_uid');
+      sessionStorage.clear();
+    } catch {}
+
+    setClassInfo({
+      ...INITIAL_CLASS_INFO,
+      studentName: 'Học sinh',
+      weekStartDate: getVietnamCurrentMondayStr()
+    });
+    setIsIntroOpen(true);
   };
 
   // Link Guest Account to Google Cloud
@@ -2552,7 +2620,7 @@ export default function App() {
         onImportBackupData={handleImportData}
         onStartDemo={startDemoSession}
         onGoogleLogin={handleGoogleLogin}
-        onClose={() => setIsIntroOpen(false)}
+        onClose={currentUser || isGuestMode ? () => setIsIntroOpen(false) : undefined}
       />
     );
   }
@@ -2624,18 +2692,7 @@ export default function App() {
           } catch {}
           setIsIntroOpen(true);
         }}
-        onLogout={async () => {
-          try {
-            await signOut();
-            localStorage.removeItem('mindmap_remembered_student_id');
-            localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_child_id`);
-            localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
-            localStorage.removeItem(`${STORAGE_KEY_PREFIX}role`);
-          } catch (err) {
-            console.error('Signout error:', err);
-          }
-          setIsIntroOpen(true);
-        }}
+        onLogout={handleLogout}
         currentChildAvatar={activeChildProfile?.avatar}
         currentUserEmail={currentUser?.email || undefined}
         onShareReport={captureTimetable}
