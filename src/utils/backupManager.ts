@@ -165,7 +165,7 @@ export function createBackupPackage(params: {
 export function validateAndParseBackup(jsonText: string): {
   isValid: boolean;
   error?: string;
-  data?: Partial<BackupPackage>;
+  data?: BackupPackage;
   summary?: string;
 } {
   try {
@@ -174,26 +174,53 @@ export function validateAndParseBackup(jsonText: string): {
       return { isValid: false, error: 'Tệp không phải định dạng JSON hợp lệ.' };
     }
 
-    // Check minimum requirements: either v2 schema or legacy format
-    const hasClassInfo = Boolean(parsed.classInfo && typeof parsed.classInfo === 'object');
-    const hasSlots = Array.isArray(parsed.timetableSlots);
-    const hasLessons = Array.isArray(parsed.lessons);
-
-    if (!hasClassInfo && !hasSlots && !hasLessons) {
-      return { isValid: false, error: 'Tệp không chứa cấu trúc thời khóa biểu hợp lệ của ứng dụng.' };
+    // Kiểm tra schema và version
+    if (parsed.schema !== 'THOI_KHOA_BIEU_LOCAL_FIRST_BACKUP') {
+      return { isValid: false, error: 'Tệp không đúng định dạng schema THOI_KHOA_BIEU_LOCAL_FIRST_BACKUP.' };
+    }
+    if (!parsed.version) {
+      return { isValid: false, error: 'Tệp thiếu thông tin phiên bản sao lưu (version).' };
     }
 
-    const studentName = parsed.classInfo?.studentName || parsed.metadata?.studentName || 'Học sinh';
-    const className = parsed.classInfo?.className || parsed.metadata?.className || 'Lớp học';
-    const slotCount = Array.isArray(parsed.timetableSlots) ? parsed.timetableSlots.length : 0;
-    const lessonCount = Array.isArray(parsed.lessons) ? parsed.lessons.length : 0;
-    const recordCount = Array.isArray(parsed.studyRecords) ? parsed.studyRecords.length : 0;
+    // Kiểm tra đủ 8 canonical entities
+    if (!parsed.classInfo || typeof parsed.classInfo !== 'object' || Array.isArray(parsed.classInfo)) {
+      return { isValid: false, error: 'Tệp thiếu thông tin lớp học (classInfo hợp lệ).' };
+    }
+    if (!Array.isArray(parsed.subjects)) {
+      return { isValid: false, error: 'Tệp thiếu danh sách môn học (subjects).' };
+    }
+    if (!Array.isArray(parsed.timetableSlots)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu thời khóa biểu (timetableSlots).' };
+    }
+    if (!Array.isArray(parsed.periods)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu tiết học (periods).' };
+    }
+    if (!Array.isArray(parsed.lessons)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu bài học (lessons).' };
+    }
+    if (!Array.isArray(parsed.lessonPlans)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu kế hoạch bài học (lessonPlans).' };
+    }
+    if (!Array.isArray(parsed.studyRecords)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu ghi nhận học tập (studyRecords).' };
+    }
+    if (!Array.isArray(parsed.documents)) {
+      return { isValid: false, error: 'Tệp thiếu dữ liệu tài liệu (documents).' };
+    }
 
-    const summary = `${studentName} (${className}) • ${slotCount} tiết học • ${lessonCount} bài học • ${recordCount} ghi chú`;
+    const studentName = parsed.classInfo.studentName || parsed.metadata?.studentName || 'Học sinh';
+    const className = parsed.classInfo.className || parsed.metadata?.className || 'Lớp học';
+    const slotCount = parsed.timetableSlots.length;
+    const lessonCount = parsed.lessons.length;
+    const recordCount = parsed.studyRecords.length;
+    const docCount = parsed.documents.length;
+    const subjectCount = parsed.subjects.length;
+
+    const summary = `${studentName} (${className}) • ${subjectCount} môn học • ${slotCount} tiết học • ${lessonCount} bài học • ${recordCount} ghi chú • ${docCount} tài liệu`;
 
     return {
       isValid: true,
-      data: parsed,
+      data: parsed as BackupPackage,
       summary
     };
   } catch (err: any) {

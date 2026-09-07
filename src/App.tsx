@@ -1,5 +1,6 @@
 import confetti from 'canvas-confetti';
 import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { useParentTransferListener } from './hooks/useParentTransferListener';
 import { 
   ClassInfo, 
   TimetableSlot, 
@@ -26,6 +27,7 @@ import {
 } from './data/mockData';
 import { getVietnamCurrentMondayStr, getVietnamTodayString, getTodayVietnamInfo } from './utils/dateUtils';
 import { saveSafeItem, setLocalStorageItemSafe, getSafeItemAsync, getSafeItemSync, clearProfileStorage } from './utils/safeStorage';
+import { getLocalAppData, saveLocalAppData, APP_DATA_KEYS, getChildLocalAppData, saveChildLocalAppData, deleteChildLocalAppData } from './utils/localLearningDb';
 import { 
   getChildData, 
   saveChildData, 
@@ -448,9 +450,25 @@ export default function App() {
     setLocalStorageItemSafe(`${STORAGE_KEY_PREFIX}role`, currentRole);
   }, [currentRole]);
 
+  // Module 3B: SSE listener for Parent/Admin to auto-receive and apply child updates
+  const [transferUpdateTrigger, setTransferUpdateTrigger] = useState(0);
+  useParentTransferListener(currentRole, activeChildProfile?.id, {
+    onSuccess: (res) => {
+      console.log('[ParentSSEListener] Applied transfer update successfully:', res.transferId);
+      setTransferUpdateTrigger(prev => prev + 1);
+      try {
+        confetti();
+      } catch {}
+    },
+    onError: (err) => {
+      console.error('[ParentSSEListener] Error in SSE listener:', err);
+    }
+  });
+
   // Hydration state for child-specific data isolation
   const [isHydrated, setIsHydrated] = useState(false);
   const isHydratingRef = useRef<boolean>(false);
+  const loadedChildIdRef = useRef<string | null>(null);
 
   // 4. Class Info
   const [classInfo, setClassInfo] = useState<ClassInfo>(() => {
@@ -522,85 +540,154 @@ export default function App() {
       const id = activeChildProfile!.id;
       isHydratingRef.current = true;
       setIsHydrated(false);
+      loadedChildIdRef.current = null;
 
       try {
-        let firebaseData = null;
-        if (effectiveUserId) {
-          firebaseData = await getChildData(effectiveUserId, id);
-        }
-        if (!firebaseData && family.familyCode) {
-          firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
-        }
-        
-        if (!isMounted) return;
+        // 1. Ưu tiên thử đọc app_data từ IndexedDB cho 8 entity
+        let localDataFound = false;
+        try {
+          const isParentRole = currentRole === 'admin';
+          const [
+            localClassInfo,
+            localSubjects,
+            localTimetableSlots,
+            localPeriods,
+            localLessons,
+            localLessonPlans,
+            localStudyRecords,
+            localDocuments
+          ] = isParentRole ? await Promise.all([
+            getChildLocalAppData<ClassInfo>(id, APP_DATA_KEYS.CLASS_INFO),
+            getChildLocalAppData<Subject[]>(id, APP_DATA_KEYS.SUBJECTS),
+            getChildLocalAppData<TimetableSlot[]>(id, APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getChildLocalAppData<PeriodInfo[]>(id, APP_DATA_KEYS.PERIODS),
+            getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
+            getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
+            getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
+            getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
+          ]) : await Promise.all([
+            getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
+            getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
+            getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
+            getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
+            getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
+            getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
+            getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
+          ]);
 
-        if (firebaseData) {
-          setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
-          setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
-          setSubjects(firebaseData.subjects || SUBJECTS_LIST);
-          setPeriods(firebaseData.periods || STANDARD_PERIODS);
-          setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
-          setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
-          setStudyRecords(firebaseData.studyRecords || []);
-          setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
-        } else {
-          // Initialize new child state
-          const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
-          const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
-            ? rawGrade
-            : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+          const isCompleteCanonicalDataset = 
+            localClassInfo !== null &&
+            localSubjects !== null &&
+            localTimetableSlots !== null &&
+            localPeriods !== null &&
+            localLessons !== null &&
+            localLessonPlans !== null &&
+            localStudyRecords !== null &&
+            localDocuments !== null;
+
+          if (isCompleteCanonicalDataset) {
+            localDataFound = true;
+            if (!isMounted) return;
+            setClassInfo(localClassInfo);
+            setTimetableSlots(localTimetableSlots);
+            setSubjects(localSubjects);
+            setPeriods(localPeriods);
+            setLessons(localLessons);
+            setLessonPlans(localLessonPlans);
+            setStudyRecords(localStudyRecords);
+            setDocuments(localDocuments);
+            loadedChildIdRef.current = id;
+          }
+        } catch (localErr) {
+          console.warn('Could not read app_data from IndexedDB, falling back to cloud:', localErr);
+        }
+
+        // 2. Nếu IndexedDB chưa có dữ liệu -> giữ nguyên flow Cloud hiện tại làm fallback
+        if (!localDataFound) {
+          let firebaseData = null;
+          if (effectiveUserId) {
+            firebaseData = await getChildData(effectiveUserId, id);
+          }
+          if (!firebaseData && family.familyCode) {
+            firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
+          }
           
-          setClassInfo({
-            ...INITIAL_CLASS_INFO,
-            studentName: activeChildProfile.name,
-            className: finalClass,
-            weekStartDate: getVietnamCurrentMondayStr()
-          });
-          setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
-          setSubjects(SUBJECTS_LIST);
-          setPeriods(STANDARD_PERIODS);
-          setLessons(INITIAL_LESSONS_BANK);
-          const activeSlots = INITIAL_TIMETABLE_SLOTS;
-          const currentMonday = getVietnamCurrentMondayStr();
-          const defaultPlans = generateInitialLessonPlans(activeSlots, currentMonday);
-          setLessonPlans(defaultPlans);
-          setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
-          setDocuments(INITIAL_DOCUMENTS);
+          if (!isMounted) return;
 
-          // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately!
-          if (family.familyCode) {
-            const initialPayload = {
-              classInfo: {
-                ...INITIAL_CLASS_INFO,
-                studentName: activeChildProfile.name,
-                className: finalClass,
-                weekStartDate: currentMonday
-              },
-              timetableSlots: INITIAL_TIMETABLE_SLOTS,
-              subjects: SUBJECTS_LIST,
-              periods: STANDARD_PERIODS,
-              lessons: INITIAL_LESSONS_BANK,
-              lessonPlans: defaultPlans,
-              studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
-              documents: INITIAL_DOCUMENTS
-            };
-            syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+          if (firebaseData) {
+            setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
+            setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
+            setSubjects(firebaseData.subjects || SUBJECTS_LIST);
+            setPeriods(firebaseData.periods || STANDARD_PERIODS);
+            setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
+            setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
+            setStudyRecords(firebaseData.studyRecords || []);
+            setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
+            loadedChildIdRef.current = id;
+          } else {
+            // Initialize new child state
+            const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
+            const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+              ? rawGrade
+              : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+            
+            setClassInfo({
+              ...INITIAL_CLASS_INFO,
+              studentName: activeChildProfile.name,
+              className: finalClass,
+              weekStartDate: getVietnamCurrentMondayStr()
+            });
+            setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
+            setSubjects(SUBJECTS_LIST);
+            setPeriods(STANDARD_PERIODS);
+            setLessons(INITIAL_LESSONS_BANK);
+            const activeSlots = INITIAL_TIMETABLE_SLOTS;
+            const currentMonday = getVietnamCurrentMondayStr();
+            const defaultPlans = generateInitialLessonPlans(activeSlots, currentMonday);
+            setLessonPlans(defaultPlans);
+            setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
+            setDocuments(INITIAL_DOCUMENTS);
+            loadedChildIdRef.current = id;
+
+            // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately! (Only for student role)
+            if (currentRole !== 'admin' && family.familyCode) {
+              const initialPayload = {
+                classInfo: {
+                  ...INITIAL_CLASS_INFO,
+                  studentName: activeChildProfile.name,
+                  className: finalClass,
+                  weekStartDate: currentMonday
+                },
+                timetableSlots: INITIAL_TIMETABLE_SLOTS,
+                subjects: SUBJECTS_LIST,
+                periods: STANDARD_PERIODS,
+                lessons: INITIAL_LESSONS_BANK,
+                lessonPlans: defaultPlans,
+                studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
+                documents: INITIAL_DOCUMENTS
+              };
+              syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+            }
           }
         }
 
       } catch (err) {
         console.error('Failed to hydrate profile', err);
+        loadedChildIdRef.current = null;
       } finally {
         if (isMounted) {
           isHydratingRef.current = false;
-          setIsHydrated(true);
+          if (loadedChildIdRef.current === id) {
+            setIsHydrated(true);
+          }
         }
       }
     }
 
     hydrateChildData();
     return () => { isMounted = false; };
-  }, [activeChildProfile?.id, effectiveUserId, family.familyCode]);
+  }, [activeChildProfile?.id, effectiveUserId, family.familyCode, currentRole, transferUpdateTrigger]);
 
   // 2-Way Realtime Stream Listener for Sub-Accounts (Parent <-> Child live sync via onSnapshot)
   useEffect(() => {
@@ -631,6 +718,9 @@ export default function App() {
   // Child-specific Save Effects to Firebase & Cloud by Family Code & SubAccount Realtime
   useEffect(() => {
     if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
+    if (loadedChildIdRef.current !== activeChildProfile.id) return;
+    // CRITICAL (Module 4B): Parent role is strictly READ-ONLY. Never auto-save canonical learning data when currentRole === 'admin'.
+    if (currentRole === 'admin') return;
     
     setIsCloudAutoSaving(true);
     // Fast, responsive 600ms debounce timer for seamless real-time syncing
@@ -647,15 +737,33 @@ export default function App() {
       };
 
       try {
+        // Save full canonical dataset to IndexedDB app_data (8 entities) - Student only
+        try {
+          await Promise.all([
+            saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, classInfo),
+            saveLocalAppData(APP_DATA_KEYS.SUBJECTS, subjects),
+            saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
+            saveLocalAppData(APP_DATA_KEYS.PERIODS, periods),
+            saveLocalAppData(APP_DATA_KEYS.LESSONS, lessons),
+            saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
+            saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
+            saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, documents),
+          ]);
+        } catch (localSaveErr) {
+          console.error('Local IndexedDB auto-save error:', localSaveErr);
+        }
+
         const promises: Promise<any>[] = [];
-        if (effectiveUserId) {
-          promises.push(saveChildData(effectiveUserId, activeChildProfile.id, payload));
-        }
-        if (family.familyCode) {
-          promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload));
-        }
-        if (activeChildProfile.subId) {
-          promises.push(saveSubAccountData(activeChildProfile.subId, payload));
+        if (currentRole !== 'admin') {
+          if (effectiveUserId) {
+            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, payload));
+          }
+          if (family.familyCode) {
+            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload));
+          }
+          if (activeChildProfile.subId) {
+            promises.push(saveSubAccountData(activeChildProfile.subId, payload));
+          }
         }
         await Promise.all(promises);
         setLastCloudSyncSuccess(new Date());
@@ -667,7 +775,7 @@ export default function App() {
     }, 600);
     
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode]);
+  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode, currentRole]);
 
   const [isEditPeriodsOpen, setIsEditPeriodsOpen] = useState(false);
 
@@ -719,7 +827,7 @@ export default function App() {
 
   // Manual Instant Sync to Cloud
   const handleManualCloudSync = async (): Promise<boolean> => {
-    if (!activeChildProfile || !family.familyCode) return false;
+    if (currentRole === 'admin' || !activeChildProfile || !family.familyCode) return false;
     setIsCloudSyncingManual(true);
     try {
       const payload = {
@@ -964,6 +1072,7 @@ export default function App() {
     status: 'COMPLETED' | 'NEEDS_REVISION',
     feedback: string
   ) => {
+    if (currentRole === 'admin') return;
     setStudyRecords((prev) =>
       prev.map((r) =>
         r.id === recordId
@@ -980,11 +1089,13 @@ export default function App() {
 
   // Delete study record
   const handleDeleteRecord = (recordId: string) => {
+    if (currentRole === 'admin') return;
     setStudyRecords((prev) => prev.filter((r) => r.id !== recordId));
     setActiveRecordForModal(undefined);
   };
 
   const handleToggleShowOnTimetable = (recordId: string, show: boolean) => {
+    if (currentRole === 'admin') return;
     setStudyRecords((prev) =>
       prev.map((r) => (r.id === recordId ? { ...r, showOnTimetable: show } : r))
     );
@@ -995,6 +1106,7 @@ export default function App() {
 
   // Update Plan Admin
   const handleUpdatePlanAdmin = (planId: string, updatedData: Partial<LessonPlan>) => {
+    if (currentRole === 'admin') return;
     setLessonPlans((prev) => {
       const idx = prev.findIndex((p) => p.id === planId);
       if (idx >= 0) {
@@ -1008,6 +1120,7 @@ export default function App() {
 
   // Update Slot Admin
   const handleUpdateSlotAdmin = (slotId: string, updatedData: Partial<TimetableSlot> | null) => {
+    if (currentRole === 'admin') return;
     setTimetableSlots((prev) => {
       if (updatedData === null) {
         return prev.filter((s) => s.id !== slotId);
@@ -1026,6 +1139,7 @@ export default function App() {
 
   // Auto distribute lessons engine
   const handleAutoDistributeLessons = (targetSubject?: string) => {
+    if (currentRole === 'admin') return;
     setLessonPlans((prevPlans) => {
       const updatedPlans = [...prevPlans];
       const allSubjectNames = Array.from(new Set(timetableSlots.map((s) => s.subjectName))).filter(
@@ -1071,14 +1185,17 @@ export default function App() {
 
   // Document actions
   const handleAddDocument = (newDoc: DocumentItem) => {
+    if (currentRole === 'admin') return;
     setDocuments((prev) => [newDoc, ...prev]);
   };
 
   const handleUpdateDocument = (updatedDoc: DocumentItem) => {
+    if (currentRole === 'admin') return;
     setDocuments((prev) => prev.map((d) => (d.id === updatedDoc.id ? updatedDoc : d)));
   };
 
   const handleDeleteDocument = (docId: string) => {
+    if (currentRole === 'admin') return;
     setDocuments((prev) => prev.filter((d) => d.id !== docId));
     if (activePreviewDoc?.id === docId) {
       setActivePreviewDoc(null);
@@ -1086,6 +1203,7 @@ export default function App() {
   };
 
   const handlePinDocumentToLesson = (doc: DocumentItem, lessonId: string, pageNumber: number = 1) => {
+    if (currentRole === 'admin') return;
     // 1. Update the lesson in lessons bank to point to this document & page
     setLessons((prev) =>
       prev.map((l) => {
@@ -1111,20 +1229,24 @@ export default function App() {
 
   // Lesson Bank Management actions
   const handleAddLesson = (newLesson: Lesson) => {
+    if (currentRole === 'admin') return;
     setLessons((prev) => [...prev, newLesson]);
   };
 
   const handleUpdateLesson = (updatedLesson: Lesson) => {
+    if (currentRole === 'admin') return;
     setLessons((prev) =>
       prev.map((l) => (l.id === updatedLesson.id ? updatedLesson : l))
     );
   };
 
   const handleDeleteLesson = (lessonId: string) => {
+    if (currentRole === 'admin') return;
     setLessons((prev) => prev.filter((l) => l.id !== lessonId));
   };
 
   const handleUpdateSubject = (updatedSubject: Subject) => {
+    if (currentRole === 'admin') return;
     setSubjects((prev) => {
       const oldSubject = prev.find((s) => s.id === updatedSubject.id);
       if (oldSubject && oldSubject.name !== updatedSubject.name) {
@@ -1139,6 +1261,7 @@ export default function App() {
   };
 
   const handleAddSubject = (newSubject: Subject) => {
+    if (currentRole === 'admin') return;
     setSubjects((prev) => {
       if (prev.some((s) => s.name.toLowerCase() === newSubject.name.toLowerCase())) {
         return prev;
@@ -1148,10 +1271,12 @@ export default function App() {
   };
 
   const handleDeleteSubject = (subjectId: string) => {
+    if (currentRole === 'admin') return;
     setSubjects((prev) => prev.filter((s) => s.id !== subjectId));
   };
 
   const handleResetSubjects = () => {
+    if (currentRole === 'admin') return;
     setSubjects(SUBJECTS_LIST);
   };
 
@@ -1297,6 +1422,7 @@ export default function App() {
     images: string[] = [],
     studentNote?: string
   ) => {
+    if (currentRole === 'admin') return;
     // 1. Update lesson with completed photos & status
     const updatedLesson: Lesson = {
       ...lesson,
@@ -1377,21 +1503,83 @@ export default function App() {
   };
 
   // Export JSON Data (Local-First Backup Package)
-  const handleExportData = () => {
+  const handleExportData = async () => {
     try {
+      // 1. FLUSH full canonical dataset from React State to IndexedDB app_data (8 entities) ONLY for Student
+      // CRITICAL (Module 4B): Parent does NOT flush state to IndexedDB prior to export.
+      if (currentRole !== 'admin') {
+        await Promise.all([
+          saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, classInfo),
+          saveLocalAppData(APP_DATA_KEYS.SUBJECTS, subjects),
+          saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
+          saveLocalAppData(APP_DATA_KEYS.PERIODS, periods),
+          saveLocalAppData(APP_DATA_KEYS.LESSONS, lessons),
+          saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
+          saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
+          saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, documents),
+        ]);
+      }
+
+      // 2. READ back all 8 canonical entities directly from IndexedDB app_data
+      const [
+        dbClassInfo,
+        dbSubjects,
+        dbTimetableSlots,
+        dbPeriods,
+        dbLessons,
+        dbLessonPlans,
+        dbStudyRecords,
+        dbDocuments,
+      ] = (currentRole === 'admin' && activeChildProfile)
+        ? await Promise.all([
+            getChildLocalAppData<ClassInfo>(activeChildProfile.id, APP_DATA_KEYS.CLASS_INFO),
+            getChildLocalAppData<Subject[]>(activeChildProfile.id, APP_DATA_KEYS.SUBJECTS),
+            getChildLocalAppData<TimetableSlot[]>(activeChildProfile.id, APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getChildLocalAppData<PeriodInfo[]>(activeChildProfile.id, APP_DATA_KEYS.PERIODS),
+            getChildLocalAppData<Lesson[]>(activeChildProfile.id, APP_DATA_KEYS.LESSONS),
+            getChildLocalAppData<LessonPlan[]>(activeChildProfile.id, APP_DATA_KEYS.LESSON_PLANS),
+            getChildLocalAppData<StudyRecord[]>(activeChildProfile.id, APP_DATA_KEYS.STUDY_RECORDS),
+            getChildLocalAppData<DocumentItem[]>(activeChildProfile.id, APP_DATA_KEYS.DOCUMENTS),
+          ])
+        : await Promise.all([
+            getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
+            getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
+            getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
+            getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
+            getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
+            getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
+            getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS),
+          ]);
+
+      // Check all 8 canonical entities are present in IndexedDB
+      if (
+        dbClassInfo === null ||
+        dbSubjects === null ||
+        dbTimetableSlots === null ||
+        dbPeriods === null ||
+        dbLessons === null ||
+        dbLessonPlans === null ||
+        dbStudyRecords === null ||
+        dbDocuments === null
+      ) {
+        throw new Error('Dữ liệu IndexedDB không đầy đủ 8 entity canonical để xuất backup.');
+      }
+
+      // 3. Package and export backup directly from IndexedDB data
       const backupPackage = createBackupPackage({
         family,
-        classInfo,
-        timetableSlots,
-        subjects: SUBJECTS_LIST,
-        periods,
-        lessons,
-        lessonPlans,
-        studyRecords,
-        documents
+        classInfo: dbClassInfo,
+        timetableSlots: dbTimetableSlots,
+        subjects: dbSubjects,
+        periods: dbPeriods,
+        lessons: dbLessons,
+        lessonPlans: dbLessonPlans,
+        studyRecords: dbStudyRecords,
+        documents: dbDocuments,
       });
 
-      const fileName = `TKB_Cap2_${(classInfo.className || 'LopHoc').replace(/\s+/g, '_')}_${(classInfo.studentName || 'HocSinh').replace(/\s+/g, '_')}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.json`;
+      const fileName = `TKB_Cap2_${(dbClassInfo.className || 'LopHoc').replace(/\s+/g, '_')}_${(dbClassInfo.studentName || 'HocSinh').replace(/\s+/g, '_')}_${new Date().toLocaleDateString('vi-VN').replace(/\//g, '-')}.json`;
       const jsonStr = `data:text/json;charset=utf-8,${encodeURIComponent(JSON.stringify(backupPackage, null, 2))}`;
       
       const a = document.createElement('a');
@@ -1412,73 +1600,121 @@ export default function App() {
 
   // Import JSON Data
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
+    // CRITICAL (Module 4B): Parent role is strictly READ-ONLY. Never allow importing to overwrite canonical data.
+    if (currentRole === 'admin') {
+      alert('Tài khoản Phụ huynh ở chế độ Chỉ đọc (Read-Only), không thể nạp tệp ghi đè dữ liệu học tập.');
+      e.target.value = '';
+      return;
+    }
+
     const file = e.target.files?.[0];
     if (!file) return;
 
     const reader = new FileReader();
-    reader.onload = (event) => {
+    reader.onload = async (event) => {
       const text = event.target?.result as string;
       const { isValid, error, data, summary } = validateAndParseBackup(text);
 
       if (!isValid || !data) {
         alert(error || 'Tệp sao lưu không hợp lệ!');
+        e.target.value = '';
         return;
       }
 
-      if (window.confirm(`Xác nhận khôi phục dữ liệu từ tệp?\n\n📊 Tóm tắt:\n${summary}\n\nDữ liệu hiện tại sẽ được thay thế bằng dữ liệu trong tệp.`)) {
-        if (data.classInfo) setClassInfo(data.classInfo as ClassInfo);
-        if (Array.isArray(data.timetableSlots)) setTimetableSlots(data.timetableSlots as TimetableSlot[]);
-        if (Array.isArray(data.lessons)) setLessons(data.lessons as Lesson[]);
-        if (Array.isArray(data.lessonPlans)) setLessonPlans(data.lessonPlans as LessonPlan[]);
-        if (Array.isArray(data.studyRecords)) setStudyRecords(data.studyRecords as StudyRecord[]);
-        if (Array.isArray(data.documents)) setDocuments(data.documents as DocumentItem[]);
-        if (Array.isArray(data.periods)) setPeriods(data.periods as PeriodInfo[]);
-        
-        let activatedChildName = '';
-        if (data.family && typeof data.family === 'object') {
-          const importedFam = data.family as FamilyAccount;
-          setFamily(importedFam);
+      if (!window.confirm(`Xác nhận khôi phục dữ liệu từ tệp?\n\n📊 Tóm tắt:\n${summary}\n\nDữ liệu hiện tại sẽ được thay thế bằng dữ liệu trong tệp.`)) {
+        e.target.value = '';
+        return;
+      }
 
-          if (Array.isArray(importedFam.children) && importedFam.children.length > 0) {
-            const firstChild = importedFam.children[0];
-            setActiveChildProfile(firstChild);
-            activatedChildName = firstChild.name;
-            try {
-              localStorage.setItem('mindmap_remembered_student_id', firstChild.id);
-              if (importedFam.familyCode) {
-                localStorage.setItem('mindmap_remembered_family_code', importedFam.familyCode);
-              }
-            } catch {}
-          }
+      // 1. Ghi BẮT BUỘC 8 canonical entities vào IndexedDB app_data trước khi cập nhật State
+      const targetChildId = (data.family?.children?.[0]?.id) || (activeChildProfile?.id) || 'child_default';
+      try {
+        if (currentRole === 'admin') {
+          await Promise.all([
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.CLASS_INFO, data.classInfo),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.SUBJECTS, data.subjects),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.TIMETABLE_SLOTS, data.timetableSlots),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.PERIODS, data.periods),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.LESSONS, data.lessons),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.LESSON_PLANS, data.lessonPlans),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.STUDY_RECORDS, data.studyRecords),
+            saveChildLocalAppData(targetChildId, APP_DATA_KEYS.DOCUMENTS, data.documents),
+          ]);
+        } else {
+          await Promise.all([
+            saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, data.classInfo),
+            saveLocalAppData(APP_DATA_KEYS.SUBJECTS, data.subjects),
+            saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, data.timetableSlots),
+            saveLocalAppData(APP_DATA_KEYS.PERIODS, data.periods),
+            saveLocalAppData(APP_DATA_KEYS.LESSONS, data.lessons),
+            saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, data.lessonPlans),
+            saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, data.studyRecords),
+            saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, data.documents),
+          ]);
+        }
+      } catch (dbErr: any) {
+        console.error('Lỗi khi ghi dữ liệu sao lưu vào IndexedDB:', dbErr);
+        alert(`Không thể khôi phục dữ liệu: Lỗi khi lưu vào cơ sở dữ liệu nội bộ IndexedDB (${dbErr?.message || 'DB Error'}). Tiến trình đã bị hủy bỏ an toàn.`);
+        e.target.value = '';
+        return;
+      }
 
-          if (importedFam.familyCode) {
-            syncFamilyByCodeToCloud(importedFam).catch(console.error);
+      // 2. Cập nhật React State với toàn bộ 8 canonical entities
+      setClassInfo(data.classInfo as ClassInfo);
+      setSubjects(data.subjects as Subject[]);
+      setTimetableSlots(data.timetableSlots as TimetableSlot[]);
+      setPeriods(data.periods as PeriodInfo[]);
+      setLessons(data.lessons as Lesson[]);
+      setLessonPlans(data.lessonPlans as LessonPlan[]);
+      setStudyRecords(data.studyRecords as StudyRecord[]);
+      setDocuments(data.documents as DocumentItem[]);
+      loadedChildIdRef.current = targetChildId;
+      
+      let activatedChildName = '';
+      if (data.family && typeof data.family === 'object') {
+        const importedFam = data.family as FamilyAccount;
+        setFamily(importedFam);
 
-            // Also sync child data to cloud
-            if (importedFam.children && importedFam.children.length > 0) {
-              const childPayload = {
-                classInfo: data.classInfo || classInfo,
-                timetableSlots: data.timetableSlots || timetableSlots,
-                lessons: data.lessons || lessons,
-                lessonPlans: data.lessonPlans || lessonPlans,
-                studyRecords: data.studyRecords || studyRecords,
-                documents: data.documents || documents,
-                periods: data.periods || periods,
-              };
-              syncChildDataByCodeToCloud(importedFam.familyCode, importedFam.children[0].id, childPayload).catch(console.error);
+        if (Array.isArray(importedFam.children) && importedFam.children.length > 0) {
+          const firstChild = importedFam.children[0];
+          setActiveChildProfile(firstChild);
+          activatedChildName = firstChild.name;
+          try {
+            localStorage.setItem('mindmap_remembered_student_id', firstChild.id);
+            if (importedFam.familyCode) {
+              localStorage.setItem('mindmap_remembered_family_code', importedFam.familyCode);
             }
-          }
+          } catch {}
         }
 
-        // Tự động đóng màn hình Intro và đăng nhập vào góc học tập máy con
-        setIsIntroOpen(false);
-        setCurrentRole('student');
-        setIsGuestMode(false);
+        if (importedFam.familyCode) {
+          syncFamilyByCodeToCloud(importedFam).catch(console.error);
 
-        setLastBackupTimestamp();
-        refreshBackupStatus();
-        alert(`🎉 Đã nạp tệp sao lưu thành công! Đã tự động đăng nhập vào góc học tập ${activatedChildName ? 'của ' + activatedChildName : ''} trên máy này.`);
+          // Also sync child data to cloud (including subjects)
+          if (importedFam.children && importedFam.children.length > 0) {
+            const childPayload = {
+              classInfo: data.classInfo,
+              subjects: data.subjects,
+              timetableSlots: data.timetableSlots,
+              lessons: data.lessons,
+              lessonPlans: data.lessonPlans,
+              studyRecords: data.studyRecords,
+              documents: data.documents,
+              periods: data.periods,
+            };
+            syncChildDataByCodeToCloud(importedFam.familyCode, importedFam.children[0].id, childPayload).catch(console.error);
+          }
+        }
       }
+
+      // Tự động đóng màn hình Intro và đăng nhập vào góc học tập máy con
+      setIsIntroOpen(false);
+      setCurrentRole('student');
+      setIsGuestMode(false);
+
+      setLastBackupTimestamp();
+      refreshBackupStatus();
+      alert(`🎉 Đã nạp tệp sao lưu thành công! Đã tự động đăng nhập vào góc học tập ${activatedChildName ? 'của ' + activatedChildName : ''} trên máy này.`);
 
       // Reset input value so user can upload same file again if needed
       e.target.value = '';
@@ -1488,6 +1724,7 @@ export default function App() {
 
   // Reset all to sample
   const handleResetAllData = () => {
+    if (currentRole === 'admin') return;
     if (window.confirm('Khôi phục toàn bộ Thời khóa biểu, kho tài liệu, kho bài học và sơ đồ mẫu theo ảnh gốc 11A1-01?')) {
       const currentMonday = getVietnamCurrentMondayStr();
       setClassInfo({
@@ -2389,9 +2626,9 @@ export default function App() {
         onClose={() => setIsLessonBankOpen(false)}
         lessons={lessons}
         timetableSlots={timetableSlots}
-        onAddLesson={(newLesson) => setLessons((prev) => [...prev, newLesson])}
-        onUpdateLesson={(updated) => setLessons((prev) => prev.map((l) => l.id === updated.id ? updated : l))}
-        onDeleteLesson={(id) => setLessons((prev) => prev.filter((l) => l.id !== id))}
+        onAddLesson={handleAddLesson}
+        onUpdateLesson={handleUpdateLesson}
+        onDeleteLesson={handleDeleteLesson}
         onAutoDistributeLessons={handleAutoDistributeLessons}
       />
 
@@ -2400,7 +2637,9 @@ export default function App() {
         isOpen={isSettingsOpen}
         onClose={() => setIsSettingsOpen(false)}
         classInfo={classInfo}
-        onSaveClassInfo={setClassInfo}
+        onSaveClassInfo={(info) => {
+          if (currentRole !== 'admin') setClassInfo(info);
+        }}
         onResetToDefaults={handleResetAllData}
       />
 
@@ -2409,7 +2648,9 @@ export default function App() {
         isOpen={isEditPeriodsOpen}
         onClose={() => setIsEditPeriodsOpen(false)}
         periods={periods}
-        onSavePeriods={(updatedPeriods) => setPeriods(updatedPeriods)}
+        onSavePeriods={(updatedPeriods) => {
+          if (currentRole !== 'admin') setPeriods(updatedPeriods);
+        }}
       />
 
       {/* Modal 7: Parent PIN Challenge */}

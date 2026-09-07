@@ -583,7 +583,7 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
           <section className="space-y-3 border-t border-slate-100 pt-5">
             <h4 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base">
               <Download className="w-4 h-4 text-purple-600" />
-              <span>Bảo vệ Dữ liệu (Sao lưu & Phục hồi toàn bộ gia đình)</span>
+              <span>Bảo vệ Dữ liệu (Sao lưu hồ sơ học tập)</span>
             </h4>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <button 
@@ -592,21 +592,15 @@ export const ParentDashboardModal: React.FC<ParentDashboardModalProps> = ({
                 className="flex flex-col items-center justify-center gap-1.5 p-3.5 border border-blue-200 bg-blue-50/70 hover:bg-blue-100 text-blue-700 rounded-2xl transition-colors text-xs font-bold cursor-pointer"
               >
                 <Download className="w-5 h-5" />
-                <span>Sao lưu toàn bộ gia đình (.json)</span>
+                <span>Sao lưu hồ sơ con (.json)</span>
                 <span className="text-[10px] text-blue-600/80 font-normal">Tải về máy tính để lưu trữ an toàn</span>
               </button>
               
-              <label className="flex flex-col items-center justify-center gap-1.5 p-3.5 border border-emerald-200 bg-emerald-50/70 hover:bg-emerald-100 text-emerald-700 rounded-2xl transition-colors text-xs font-bold cursor-pointer">
-                <Upload className="w-5 h-5" />
-                <span>Phục hồi từ file sao lưu</span>
-                <span className="text-[10px] text-emerald-600/80 font-normal">Nhập lại dữ liệu khi đổi máy tính</span>
-                <input 
-                  type="file" 
-                  accept=".json" 
-                  onChange={onImportData} 
-                  className="hidden" 
-                />
-              </label>
+              <div className="flex flex-col items-center justify-center gap-1.5 p-3.5 border border-slate-200 bg-slate-50/70 text-slate-500 rounded-2xl text-xs font-bold text-center">
+                <ShieldCheck className="w-5 h-5 text-slate-400" />
+                <span>Chế độ Chỉ đọc (Read-Only)</span>
+                <span className="text-[10px] text-slate-400 font-normal">Tính năng Phục hồi file sao lưu được thực hiện trực tiếp tại giao diện Học sinh</span>
+              </div>
             </div>
           </section>
         </div>

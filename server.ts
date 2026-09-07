@@ -1,6 +1,7 @@
 import express from "express";
 import path from "path";
 import { processSyncPush, processSyncPull } from "./server/syncEngine.ts";
+import { handlePostTransfer, handleGetTransfer, handleAckTransfer, handleTransferEvents } from "./server/transferRelay.ts";
 
 async function startServer() {
   const app = express();
@@ -61,6 +62,13 @@ async function startServer() {
       res.status(500).json({ success: false, error: { code: "INTERNAL_ERROR", message: "Internal server error" } });
     }
   });
+
+  // Transfer Relay API (Module 2A/2B/2C/2D: Temporary RAM relay with dedicated 25mb safety parser)
+  const transferJsonParser = express.json({ limit: "25mb" });
+  app.post("/api/transfer", transferJsonParser, handlePostTransfer);
+  app.get("/api/transfer/events", handleTransferEvents);
+  app.get("/api/transfer/:transferId", handleGetTransfer);
+  app.post("/api/transfer/:transferId/ack", handleAckTransfer);
 
   // Vite middleware for development; static file serving for production
   if (isDev) {
