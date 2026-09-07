@@ -1172,51 +1172,57 @@ export default function App() {
   const handleGoogleLogin = async (role: UserRole) => {
     try {
       const user = await signInWithGoogle();
-      if (user) {
-        setCurrentUser(user);
-        if (role === 'student') {
-          const childId = user.uid;
-          const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
-          const childProfile: ChildProfile = {
-            id: childId,
-            name: studentRealName,
-            grade: 6,
-            className: 'Lớp 6A',
-            avatar: '🚀',
-            studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase()
-          };
-          setActiveChildProfile(childProfile);
-          setClassInfo((prev) => ({
-            ...prev,
-            studentName: studentRealName,
-            className: prev.className || 'Lớp 6A'
-          }));
-          setCurrentRole('student');
-          setIsGuestMode(false);
-          try {
-            localStorage.setItem('mindmap_remembered_student_id', childId);
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
-          } catch {}
-          setIsIntroOpen(false);
-        } else {
-          setActiveChildProfile(null);
-          setCurrentRole('admin');
-          setFamily((prev) => ({
-            ...prev,
-            parentName: user.displayName || 'Phụ huynh',
-            parentEmail: user.email || ''
-          }));
-          try {
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
-          } catch {}
-          setIsIntroOpen(false);
-          setShowParentDashboard(true);
-        }
+      if (!user) {
+        // Người dùng đã đóng popup hoặc huỷ đăng nhập -> dừng êm ái
+        return;
       }
-    } catch (err) {
+      setCurrentUser(user);
+      if (role === 'student') {
+        const childId = user.uid;
+        const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
+        const childProfile: ChildProfile = {
+          id: childId,
+          name: studentRealName,
+          grade: 6,
+          className: 'Lớp 6A',
+          avatar: '🚀',
+          studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase()
+        };
+        setActiveChildProfile(childProfile);
+        setClassInfo((prev) => ({
+          ...prev,
+          studentName: studentRealName,
+          className: prev.className || 'Lớp 6A'
+        }));
+        setCurrentRole('student');
+        setIsGuestMode(false);
+        try {
+          localStorage.setItem('mindmap_remembered_student_id', childId);
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
+        } catch {}
+        setIsIntroOpen(false);
+      } else {
+        setActiveChildProfile(null);
+        setCurrentRole('admin');
+        setFamily((prev) => ({
+          ...prev,
+          parentName: user.displayName || 'Phụ huynh',
+          parentEmail: user.email || ''
+        }));
+        try {
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+          localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
+        } catch {}
+        setIsIntroOpen(false);
+        setShowParentDashboard(true);
+      }
+    } catch (err: any) {
+      const code = err?.code || '';
+      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
+        return;
+      }
       console.error('Error in Google Auth login:', err);
       alert('Đăng nhập Google không thành công. Vui lòng thử lại sau!');
     }

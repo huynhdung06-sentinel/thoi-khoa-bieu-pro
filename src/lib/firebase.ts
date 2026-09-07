@@ -8,7 +8,8 @@ import {
   signInAnonymously
 } from 'firebase/auth';
 import { 
-  getFirestore, 
+  getFirestore,
+  initializeFirestore,
   doc, 
   setDoc, 
   getDoc, 
@@ -27,9 +28,15 @@ import { FamilyAccount, ChildProfile, SubAccountToken } from '../types';
 
 const app = initializeApp(firebaseConfig);
 const config = firebaseConfig as any;
+
+const firestoreSettings = {
+  experimentalAutoDetectLongPolling: true,
+  ignoreUndefinedProperties: true,
+};
+
 export const db = config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, config.firestoreDatabaseId)
-  : getFirestore(app);
+  ? initializeFirestore(app, firestoreSettings, config.firestoreDatabaseId)
+  : initializeFirestore(app, firestoreSettings);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
@@ -39,10 +46,16 @@ export const signInWithGoogle = async () => {
     const result = await signInWithPopup(auth, googleProvider);
     return result.user;
   } catch (error: any) {
-    console.error("Google sign-in error:", error?.code || error?.message);
-    if (error?.code === 'auth/popup-closed-by-user' || error?.code === 'auth/cancelled-popup-request') {
+    const code = error?.code || '';
+    // Xử lý các trường hợp người dùng chủ động đóng popup hoặc huỷ yêu cầu một cách êm ái
+    if (
+      code === 'auth/popup-closed-by-user' ||
+      code === 'auth/cancelled-popup-request' ||
+      code === 'auth/user-cancelled'
+    ) {
       return null;
     }
+    console.error("Google sign-in error:", code || error?.message);
     throw error;
   }
 };
