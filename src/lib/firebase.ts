@@ -40,22 +40,76 @@ export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
 
-export const signInWithGoogle = async () => {
+export interface GoogleAuthResult {
+  success: boolean;
+  user?: any;
+  code?: string;
+  message?: string;
+  silent?: boolean;
+}
+
+export const signInWithGoogle = async (): Promise<GoogleAuthResult> => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
-    return result.user;
+    return {
+      success: true,
+      user: result.user,
+      message: 'Đăng nhập Google thành công'
+    };
   } catch (error: any) {
-    const code = error?.code || '';
-    // Xử lý các trường hợp người dùng chủ động đóng popup hoặc huỷ yêu cầu một cách êm ái
-    if (
-      code === 'auth/popup-closed-by-user' ||
-      code === 'auth/cancelled-popup-request' ||
-      code === 'auth/user-cancelled'
-    ) {
-      return null;
+    const code = error?.code || 'UNKNOWN_ERROR';
+    const rawMessage = error?.message || '';
+
+    // Bản đồ lỗi tiếng Việt thân thiện & chi tiết
+    const errorMap: Record<string, { userMsg: string; silent?: boolean }> = {
+      'auth/popup-closed-by-user': {
+        userMsg: 'Bạn đã đóng cửa sổ đăng nhập.',
+        silent: true
+      },
+      'auth/cancelled-popup-request': {
+        userMsg: 'Yêu cầu đăng nhập đã được làm mới.',
+        silent: true
+      },
+      'auth/user-cancelled': {
+        userMsg: 'Đã hủy phiên đăng nhập.',
+        silent: true
+      },
+      'auth/network-request-failed': {
+        userMsg: '❌ Không có kết nối mạng internet. Vui lòng kiểm tra WiFi hoặc dữ liệu 3G/4G của bạn.'
+      },
+      'auth/popup-blocked': {
+        userMsg: '❌ Cửa sổ Pop-up bị chặn! Vui lòng cho phép Pop-up trên thanh địa chỉ trình duyệt để đăng nhập Google.'
+      },
+      'auth/operation-not-supported-in-this-environment': {
+        userMsg: '❌ Trình duyệt hiện tại không hỗ trợ phương thức đăng nhập này.'
+      },
+      'auth/too-many-requests': {
+        userMsg: '⏱ Quá nhiều yêu cầu cùng lúc. Vui lòng chờ 1-2 phút rồi thử lại.'
+      },
+      'auth/unauthorized-domain': {
+        userMsg: '❌ Tên miền truy cập chưa được cấp quyền trong cấu hình Firebase.'
+      }
+    };
+
+    const errorInfo = errorMap[code] || {
+      userMsg: `❌ Đăng nhập Google không thành công: ${code || rawMessage || 'Lỗi không xác định'}`
+    };
+
+    if (!errorInfo.silent) {
+      console.error('[Google Auth Error]', {
+        code,
+        message: rawMessage,
+        userMsg: errorInfo.userMsg,
+        time: new Date().toISOString()
+      });
     }
-    console.error("Google sign-in error:", code || error?.message);
-    throw error;
+
+    return {
+      success: false,
+      code,
+      message: errorInfo.userMsg,
+      silent: errorInfo.silent === true
+    };
   }
 };
 
@@ -287,15 +341,35 @@ export const syncFamilyByCodeToCloud = async (family: FamilyAccount): Promise<bo
   }
 };
 
-export const fetchFamilyByCodeFromCloud = async (familyCode: string): Promise<FamilyAccount | null> => {
+export const fetchFamilyByCodeFromCloud = async (
+  familyCode: string,
+  options?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<FamilyAccount | null> => {
   try {
     if (!navigator.onLine) return null;
+    if (options?.signal?.aborted) return null;
 
     const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || cleanCode.length < 4) return null;
 
     const famRef = doc(db, 'families_by_code', cleanCode);
-    const snap = await getDoc(famRef);
+    const timeoutMs = options?.timeoutMs || 8000;
+    
+    // Timeout race to prevent hanging on poor network
+    const fetchPromise = getDoc(famRef);
+    const snap = await Promise.race([
+      fetchPromise,
+      new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => reject(new DOMException('Timeout', 'AbortError')), timeoutMs);
+        if (options?.signal) {
+          options.signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        }
+      })
+    ]);
+
     if (!snap.exists()) return null;
 
     const data = snap.data();
@@ -309,7 +383,9 @@ export const fetchFamilyByCodeFromCloud = async (familyCode: string): Promise<Fa
       children: Array.isArray(data.children) ? data.children : [],
     };
   } catch (err: any) {
-    if (err?.message?.includes('offline')) {
+    if (err?.name === 'AbortError' || err?.message?.includes('Timeout')) {
+      console.warn('[Cloud Sync] fetchFamilyByCode timeout/aborted - falling back to local.');
+    } else if (err?.message?.includes('offline')) {
       console.warn('Network offline, could not fetch family from cloud.');
     } else {
       console.error('Error fetching family from cloud by code:', err);
@@ -338,21 +414,43 @@ export const syncChildDataByCodeToCloud = async (familyCode: string, childId: st
   }
 };
 
-export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId: string): Promise<any | null> => {
+export const fetchChildDataByCodeFromCloud = async (
+  familyCode: string,
+  childId: string,
+  options?: { signal?: AbortSignal; timeoutMs?: number }
+): Promise<any | null> => {
   try {
     if (!navigator.onLine) return null;
+    if (options?.signal?.aborted) return null;
 
     const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
     if (!cleanCode || !childId) return null;
 
     const dataRef = doc(db, 'families_by_code', cleanCode, 'children_data', childId);
-    const snap = await getDoc(dataRef);
+    const timeoutMs = options?.timeoutMs || 8000;
+
+    const fetchPromise = getDoc(dataRef);
+    const snap = await Promise.race([
+      fetchPromise,
+      new Promise<never>((_, reject) => {
+        const timer = setTimeout(() => reject(new DOMException('Timeout', 'AbortError')), timeoutMs);
+        if (options?.signal) {
+          options.signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          }, { once: true });
+        }
+      })
+    ]);
+
     if (snap.exists()) {
       return snap.data();
     }
     return null;
   } catch (err: any) {
-    if (err?.message?.includes('offline')) {
+    if (err?.name === 'AbortError' || err?.message?.includes('Timeout')) {
+      console.warn('[Cloud Sync] fetchChildData timeout/aborted - falling back to local.');
+    } else if (err?.message?.includes('offline')) {
       console.warn('Network offline, could not fetch child data from cloud.');
     } else {
       console.error('Error fetching child data by code from cloud:', err);

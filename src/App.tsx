@@ -107,6 +107,24 @@ const setParentPinToStorage = (pin: string) => {
   }
 };
 
+const setLocalStorageItemSafeAsync = async (key: string, value: string): Promise<void> => {
+  return new Promise((resolve) => {
+    try {
+      localStorage.setItem(key, value);
+      const readBack = localStorage.getItem(key);
+      if (readBack === value) {
+        resolve();
+      } else {
+        console.warn(`[SafeStorage] Write verification mismatch for ${key}`);
+        resolve();
+      }
+    } catch (e) {
+      console.warn(`[SafeStorage] Failed to set ${key}:`, e);
+      resolve();
+    }
+  });
+};
+
 export default function App() {
   const [showParentPin, setShowParentPin] = useState(false);
   const [parentPinCallback, setParentPinCallback] = useState<(() => void) | null>(null);
@@ -172,98 +190,7 @@ export default function App() {
     }
   }, [family]);
 
-  // Sync latest family data & Handle Magic Direct Link & 0ms Token on startup
-  useEffect(() => {
-    let isCancelled = false;
-    const checkCloudFamily = async () => {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('token');
-        const urlFamilyCode = urlParams.get('family');
-        const urlChildId = urlParams.get('child');
 
-        // 1. FAST-PATH: Handle 0ms Sub-Account Token
-        if (urlToken) {
-          const decoded = decodeSubAccountToken(urlToken);
-          if (decoded && decoded.subId) {
-            signInAnonymouslyUser().catch(() => {});
-            localStorage.setItem('mindmap_sub_account_id', decoded.subId);
-
-            let targetChild = family.children?.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
-            if (!targetChild) {
-              targetChild = {
-                id: decoded.subId,
-                subId: decoded.subId,
-                parentId: decoded.parentId,
-                name: decoded.childName || 'Người học',
-                grade: decoded.childGrade || '7',
-                className: decoded.childGrade || 'Lớp 7',
-                avatar: '🚀'
-              };
-              setFamily(prev => ({
-                ...prev,
-                children: [...(prev.children || []), targetChild!]
-              }));
-            }
-            setActiveChildProfile(targetChild);
-            localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
-            if (decoded.parentId) {
-              localStorage.setItem('mindmap_remembered_family_code', decoded.parentId);
-            }
-            setIsIntroOpen(false);
-
-            // Clean URL to keep it pretty
-            const url = new URL(window.location.href);
-            url.searchParams.delete('token');
-            url.searchParams.delete('family');
-            url.searchParams.delete('child');
-            window.history.replaceState({}, '', url.toString());
-          }
-        }
-        
-        const targetFamilyCode = urlFamilyCode || localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
-        
-        if (targetFamilyCode) {
-          const cloudFam = await fetchFamilyByCodeFromCloud(targetFamilyCode);
-          if (!isCancelled && cloudFam) {
-            setFamily(prev => {
-              const updatedFam = {
-                ...prev,
-                ...cloudFam,
-                children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
-              };
-              
-              // Handle Magic Direct Link Auto-login
-              if (urlFamilyCode && urlChildId) {
-                const targetChild = updatedFam.children.find(c => c.id === urlChildId) || updatedFam.children[0];
-                if (targetChild) {
-                  setActiveChildProfile(targetChild);
-                  localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
-                  localStorage.setItem('mindmap_remembered_family_code', targetFamilyCode);
-                  setIsIntroOpen(false);
-                  
-                  // Clean URL to keep it pretty
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('family');
-                  url.searchParams.delete('child');
-                  window.history.replaceState({}, '', url.toString());
-                }
-              }
-              return updatedFam;
-            });
-          }
-        }
-      } catch (err) {
-        console.error('Error fetching initial cloud family:', err);
-      } finally {
-        if (!isCancelled) {
-          setIsCloudLoading(false);
-        }
-      }
-    };
-    checkCloudFamily();
-    return () => { isCancelled = true; };
-  }, []);
 
   // Active child profile & Auto-login for remembered device
   const [activeChildProfile, setActiveChildProfile] = useState<ChildProfile | null>(() => {
@@ -525,15 +452,18 @@ export default function App() {
   const effectiveUserId = currentUser?.uid || studentParentUserId;
   
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
+    const unsubscribe = onAuthStateChanged(auth, async (user) => {
       setCurrentUser(user);
       setIsAuthLoading(false);
       if (user) {
         setStudentParentUserId(user.uid);
-        try {
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}student_parent_uid`, user.uid);
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-        } catch {}
+        await Promise.allSettled([
+          setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}student_parent_uid`, user.uid),
+          setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true'),
+          setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}role`, 'student'),
+          setLocalStorageItemSafeAsync('mindmap_remembered_student_id', user.uid),
+          setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}active_child_id`, user.uid),
+        ]);
         
         const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
         setClassInfo((prev) => ({
@@ -567,6 +497,116 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
+  // Sync latest family data & Handle Magic Direct Link & 0ms Token on startup or auth ready
+  useEffect(() => {
+    if (isAuthLoading) return;
+
+    let isCancelled = false;
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+    const checkCloudFamily = async () => {
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const urlToken = urlParams.get('token');
+        const urlFamilyCode = urlParams.get('family');
+        const urlChildId = urlParams.get('child');
+
+        // 1. FAST-PATH: Handle 0ms Sub-Account Token
+        if (urlToken) {
+          const decoded = decodeSubAccountToken(urlToken);
+          if (decoded && decoded.subId) {
+            signInAnonymouslyUser().catch(() => {});
+            localStorage.setItem('mindmap_sub_account_id', decoded.subId);
+
+            let targetChild = family.children?.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
+            if (!targetChild) {
+              targetChild = {
+                id: decoded.subId,
+                subId: decoded.subId,
+                parentId: decoded.parentId,
+                name: decoded.childName || 'Người học',
+                grade: decoded.childGrade || '7',
+                className: decoded.childGrade || 'Lớp 7',
+                avatar: '🚀'
+              };
+              setFamily(prev => ({
+                ...prev,
+                children: [...(prev.children || []), targetChild!]
+              }));
+            }
+            setActiveChildProfile(targetChild);
+            localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
+            if (decoded.parentId) {
+              localStorage.setItem('mindmap_remembered_family_code', decoded.parentId);
+            }
+            setIsIntroOpen(false);
+
+            // Clean URL to keep it pretty
+            const url = new URL(window.location.href);
+            url.searchParams.delete('token');
+            url.searchParams.delete('family');
+            url.searchParams.delete('child');
+            window.history.replaceState({}, '', url.toString());
+          }
+        }
+        
+        const targetFamilyCode = urlFamilyCode || localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
+        
+        if (targetFamilyCode) {
+          const cloudFam = await fetchFamilyByCodeFromCloud(targetFamilyCode, {
+            signal: controller.signal,
+            timeoutMs: 8000
+          });
+          if (!isCancelled && cloudFam) {
+            setFamily(prev => {
+              const updatedFam = {
+                ...prev,
+                ...cloudFam,
+                children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
+              };
+              
+              // Handle Magic Direct Link Auto-login
+              if (urlFamilyCode && urlChildId) {
+                const targetChild = updatedFam.children.find(c => c.id === urlChildId) || updatedFam.children[0];
+                if (targetChild) {
+                  setActiveChildProfile(targetChild);
+                  localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
+                  localStorage.setItem('mindmap_remembered_family_code', targetFamilyCode);
+                  setIsIntroOpen(false);
+                  
+                  // Clean URL to keep it pretty
+                  const url = new URL(window.location.href);
+                  url.searchParams.delete('family');
+                  url.searchParams.delete('child');
+                  window.history.replaceState({}, '', url.toString());
+                }
+              }
+              return updatedFam;
+            });
+          }
+        }
+      } catch (err: any) {
+        if (err?.name === 'AbortError') {
+          console.warn('[Cloud Sync] checkCloudFamily timeout after 8s - fallback to local data');
+        } else {
+          console.error('Error fetching initial cloud family:', err);
+        }
+      } finally {
+        clearTimeout(timeoutId);
+        if (!isCancelled) {
+          setIsCloudLoading(false);
+        }
+      }
+    };
+
+    checkCloudFamily();
+    return () => {
+      isCancelled = true;
+      clearTimeout(timeoutId);
+    };
+  }, [isAuthLoading, effectiveUserId, family.familyCode]);
+
   // Profile Hydration Effect (Isolation of Schedules & Study Data)
   useEffect(() => {
     if (!activeChildProfile) {
@@ -582,11 +622,46 @@ export default function App() {
       loadedChildIdRef.current = null;
 
       try {
-        // 1. Nạp dữ liệu cục bộ từ IndexedDB trước để hiển thị tức thì (0ms)
-        let localDataFound = false;
-        try {
-          const isParentRole = currentRole === 'admin';
+        const isParentRole = currentRole === 'admin';
 
+        // Fetch Local IndexedDB and Cloud Firestore in parallel with 8s timeout
+        const [localResult, cloudResult] = await Promise.allSettled([
+          isParentRole ? Promise.all([
+            getChildLocalAppData<ClassInfo>(id, APP_DATA_KEYS.CLASS_INFO),
+            getChildLocalAppData<Subject[]>(id, APP_DATA_KEYS.SUBJECTS),
+            getChildLocalAppData<TimetableSlot[]>(id, APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getChildLocalAppData<PeriodInfo[]>(id, APP_DATA_KEYS.PERIODS),
+            getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
+            getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
+            getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
+            getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
+          ]) : Promise.all([
+            getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
+            getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
+            getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
+            getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
+            getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
+            getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
+            getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
+            getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
+          ]),
+
+          (async () => {
+            let firebaseData = null;
+            if (effectiveUserId) {
+              firebaseData = await getChildData(effectiveUserId, id);
+            }
+            if (!firebaseData && family.familyCode) {
+              firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id, { timeoutMs: 8000 });
+            }
+            return firebaseData;
+          })()
+        ]);
+
+        if (!isMounted) return;
+
+        let localDataFound = false;
+        if (localResult.status === 'fulfilled' && localResult.value) {
           const [
             localClassInfo,
             localSubjects,
@@ -596,25 +671,7 @@ export default function App() {
             localLessonPlans,
             localStudyRecords,
             localDocuments
-          ] = isParentRole ? await Promise.all([
-            getChildLocalAppData<ClassInfo>(id, APP_DATA_KEYS.CLASS_INFO),
-            getChildLocalAppData<Subject[]>(id, APP_DATA_KEYS.SUBJECTS),
-            getChildLocalAppData<TimetableSlot[]>(id, APP_DATA_KEYS.TIMETABLE_SLOTS),
-            getChildLocalAppData<PeriodInfo[]>(id, APP_DATA_KEYS.PERIODS),
-            getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
-            getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
-            getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
-            getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
-          ]) : await Promise.all([
-            getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
-            getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
-            getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
-            getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
-            getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
-            getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
-            getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
-            getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
-          ]);
+          ] = localResult.value;
 
           const isCompleteCanonicalDataset = 
             localClassInfo !== null &&
@@ -628,7 +685,6 @@ export default function App() {
 
           if (isCompleteCanonicalDataset) {
             localDataFound = true;
-            if (!isMounted) return;
             setClassInfo(localClassInfo);
             setTimetableSlots(localTimetableSlots);
             setSubjects(localSubjects);
@@ -639,20 +695,9 @@ export default function App() {
             setDocuments(localDocuments);
             loadedChildIdRef.current = id;
           }
-        } catch (localErr) {
-          console.warn('Could not read app_data from IndexedDB, falling back:', localErr);
         }
 
-        // 2. Luôn kiểm tra Cloud để đồng bộ trạng thái mới nhất từ các thiết bị khác về máy
-        let firebaseData = null;
-        if (effectiveUserId) {
-          firebaseData = await getChildData(effectiveUserId, id);
-        }
-        if (!firebaseData && family.familyCode) {
-          firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
-        }
-
-        if (!isMounted) return;
+        const firebaseData = cloudResult.status === 'fulfilled' ? cloudResult.value : null;
 
         if (firebaseData) {
           // Cập nhật State với bản mới nhất từ Cloud
@@ -669,7 +714,7 @@ export default function App() {
           // Lưu bản mới nhất này vào IndexedDB để cache cục bộ được làm mới ngay
           try {
             if (currentRole === 'admin') {
-              await Promise.all([
+              Promise.all([
                 saveChildLocalAppData(id, APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
                 saveChildLocalAppData(id, APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
                 saveChildLocalAppData(id, APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
@@ -678,9 +723,9 @@ export default function App() {
                 saveChildLocalAppData(id, APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
                 saveChildLocalAppData(id, APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
                 saveChildLocalAppData(id, APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
-              ]);
+              ]).catch(e => console.warn('Cache save warning:', e));
             } else {
-              await Promise.all([
+              Promise.all([
                 saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
                 saveLocalAppData(APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
                 saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
@@ -689,7 +734,7 @@ export default function App() {
                 saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
                 saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
                 saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
-              ]);
+              ]).catch(e => console.warn('Cache save warning:', e));
             }
           } catch (cacheErr) {
             console.warn('Lỗi ghi đè cache IndexedDB từ Cloud:', cacheErr);
@@ -1185,13 +1230,24 @@ export default function App() {
     }
   };
 
+  const [isGoogleLoggingIn, setIsGoogleLoggingIn] = useState<boolean>(false);
+
   const handleGoogleLogin = async () => {
+    if (isGoogleLoggingIn) return;
+    setIsGoogleLoggingIn(true);
     try {
-      const user = await signInWithGoogle();
-      if (!user) {
-        // Người dùng đã đóng popup hoặc huỷ đăng nhập -> dừng êm ái
+      const result = await signInWithGoogle();
+      if (!result.success) {
+        if (result.silent) {
+          return;
+        }
+        alert(result.message || 'Đăng nhập Google không thành công. Vui lòng thử lại sau!');
         return;
       }
+
+      const user = result.user;
+      if (!user) return;
+
       setCurrentUser(user);
       const childId = user.uid;
       const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
@@ -1210,20 +1266,21 @@ export default function App() {
         className: prev.className || 'Lớp 6A'
       }));
       setCurrentRole('student');
-      try {
-        localStorage.setItem('mindmap_remembered_student_id', childId);
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-        localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
-      } catch {}
+
+      await Promise.allSettled([
+        setLocalStorageItemSafeAsync('mindmap_remembered_student_id', childId),
+        setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}active_child_id`, childId),
+        setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}student_parent_uid`, childId),
+        setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true'),
+        setLocalStorageItemSafeAsync(`${STORAGE_KEY_PREFIX}role`, 'student')
+      ]);
+
       setIsIntroOpen(false);
     } catch (err: any) {
-      const code = err?.code || '';
-      if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
-        return;
-      }
       console.error('Error in Google Auth login:', err);
-      alert('Đăng nhập Google không thành công. Vui lòng thử lại sau!');
+      alert('Đăng nhập Google không thành công: ' + (err?.message || 'Vui lòng thử lại sau!'));
+    } finally {
+      setIsGoogleLoggingIn(false);
     }
   };
 
@@ -2388,6 +2445,7 @@ export default function App() {
     return (
       <LoginModal
         onGoogleLogin={handleGoogleLogin}
+        isLoggingIn={isGoogleLoggingIn}
       />
     );
   }
