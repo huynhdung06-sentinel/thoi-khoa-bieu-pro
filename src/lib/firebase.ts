@@ -32,6 +32,7 @@ export const db = config.firestoreDatabaseId && config.firestoreDatabaseId !== '
   : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
+googleProvider.setCustomParameters({ prompt: 'select_account' });
 
 export const signInWithGoogle = async () => {
   try {
