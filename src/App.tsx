@@ -849,6 +849,7 @@ export default function App() {
 
   const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
+  const isCloudSaveInFlightRef = useRef(false);
 
   // Child-specific Save Effects to Firebase & Cloud by Family Code & SubAccount Realtime
   useEffect(() => {
@@ -858,8 +859,10 @@ export default function App() {
     if (currentRole === 'admin') return;
     
     setIsCloudAutoSaving(true);
-    // Fast, responsive 600ms debounce timer for seamless real-time syncing
+    // Debounce timer (2500ms) to bundle edits cleanly and prevent exceeding Firestore maximum write stream limits
     const timer = setTimeout(async () => {
+      if (isCloudSaveInFlightRef.current) return;
+      isCloudSaveInFlightRef.current = true;
       const payload = {
         classInfo,
         subjects,
@@ -916,9 +919,10 @@ export default function App() {
       } catch (err) {
         console.error('Cloud auto-save error:', err);
       } finally {
+        isCloudSaveInFlightRef.current = false;
         setIsCloudAutoSaving(false);
       }
-    }, 600);
+    }, 2500);
     
     return () => clearTimeout(timer);
   }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode, currentRole, isViewerMode, studentId, viewerPassword]);

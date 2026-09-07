@@ -50,7 +50,24 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
   const [isEditingPassword, setIsEditingPassword] = useState(false);
   const [newPassword, setNewPassword] = useState(viewerPassword);
   const [passwordSaveStatus, setPasswordSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
+  const [syncFeedback, setSyncFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
+
+  const handleManualSyncClick = async () => {
+    try {
+      const ok = await onManualSyncCloud();
+      if (ok) {
+        setSyncFeedback('success');
+        setTimeout(() => setSyncFeedback('idle'), 3500);
+      } else {
+        setSyncFeedback('error');
+        setTimeout(() => setSyncFeedback('idle'), 4000);
+      }
+    } catch {
+      setSyncFeedback('error');
+      setTimeout(() => setSyncFeedback('idle'), 4000);
+    }
+  };
 
   if (!isOpen) return null;
 
@@ -253,20 +270,33 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
                 <FolderDown className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span>3. Sao lưu Dữ liệu & Lưu trữ Cá nhân:</span>
               </span>
-              <button
-                type="button"
-                onClick={onManualSyncCloud}
-                disabled={isSyncingCloud}
-                className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:text-sky-800 flex items-center gap-1 cursor-pointer"
-                title="Đồng bộ dữ liệu ngay lập tức lên Server để Cha/Mẹ xem được"
-              >
-                {isSyncingCloud ? (
-                  <Loader2 className="w-3 h-3 animate-spin text-sky-600" />
-                ) : (
-                  <Cloud className="w-3 h-3 text-sky-600" />
+              <div className="flex items-center gap-2">
+                {syncFeedback === 'success' && (
+                  <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+                    <Check className="w-3 h-3 text-emerald-500" />
+                    Đã lưu Server thành công!
+                  </span>
                 )}
-                <span>{isSyncingCloud ? 'Đang tải...' : 'Lưu Server ngay'}</span>
-              </button>
+                {syncFeedback === 'error' && (
+                  <span className="text-[10px] font-bold text-rose-600 dark:text-rose-400">
+                    Lưu thất bại, thử lại
+                  </span>
+                )}
+                <button
+                  type="button"
+                  onClick={handleManualSyncClick}
+                  disabled={isSyncingCloud}
+                  className="text-[11px] font-bold text-sky-700 dark:text-sky-300 hover:text-sky-800 flex items-center gap-1 cursor-pointer bg-sky-50 dark:bg-sky-950/40 px-2 py-1 rounded border border-sky-200 dark:border-sky-800"
+                  title="Đồng bộ dữ liệu ngay lập tức lên Server để Cha/Mẹ xem được"
+                >
+                  {isSyncingCloud ? (
+                    <Loader2 className="w-3 h-3 animate-spin text-sky-600" />
+                  ) : (
+                    <Cloud className="w-3 h-3 text-sky-600" />
+                  )}
+                  <span>{isSyncingCloud ? 'Đang lưu...' : 'Lưu Server ngay'}</span>
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">

@@ -1,44 +1,8 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // 1. Học sinh làm chủ dữ liệu (Student Workspace & Cloud Sync)
-    match /students/{studentId} {
+    match /{document=**} {
       allow read, write: if true;
-      
-      match /{document=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // 2. Cho phép đồng bộ dữ liệu gia đình qua Mã Gia Đình (Backward compatibility)
-    match /families_by_code/{familyCode} {
-      allow read, write: if true;
-
-      match /children_data/{childId} {
-        allow read, write: if true;
-      }
-    }
-
-    // 3. Cho phép đồng bộ tài khoản con (Sub-accounts backward compatibility)
-    match /sub_accounts/{subId} {
-      allow read, write: if true;
-      match /data/{document=**} {
-        allow read, write: if true;
-      }
-    }
-
-    // 4. Cho phép tài khoản cha mẹ
-    match /parent_accounts/{parentId} {
-      allow read, write: if true;
-    }
-
-    // 5. Cho phép tài khoản gia đình
-    match /families/{familyId} {
-      allow read, write: if true;
-      match /{allChildren=**} {
-        allow read, write: if true;
-      }
     }
   }
 }
-
