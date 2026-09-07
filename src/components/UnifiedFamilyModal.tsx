@@ -56,7 +56,6 @@ interface UnifiedFamilyModalProps {
     unsavedCount: number;
     lastBackupDateStr: string;
   };
-  isGuestMode?: boolean;
   onOpenCloudSync?: () => void;
   onExitParentMode?: () => void;
   currentUserEmail?: string;
@@ -98,7 +97,6 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
   onSwitchProfile,
   onLogout,
   backupStatus,
-  isGuestMode,
   onOpenCloudSync,
   onExitParentMode,
   currentUserEmail,
@@ -376,34 +374,60 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                         Tài khoản Google / Đăng nhập
                       </div>
                       <div className="text-xs font-black text-slate-900 truncate">
-                        {currentUserEmail || 'huynhdung06@gmail.com'}
+                        {currentUserEmail || 'Chưa liên kết tài khoản'}
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-1.5">
-                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
-                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-                      Đã kết nối
-                    </span>
+                    {currentUserEmail ? (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                        Đã kết nối
+                      </span>
+                    ) : (
+                      <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-slate-100 text-slate-800 border border-slate-300">
+                        <span className="w-1.5 h-1.5 rounded-full bg-slate-400" />
+                        Ngoại tuyến
+                      </span>
+                    )}
                   </div>
                 </div>
 
                 <div className="pt-2 border-t border-blue-200/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
                   <div className="flex items-center gap-1.5 font-medium">
-                    <span>☁️ <b>Lưu trữ đám mây:</b> Đang bật đồng bộ Firebase</span>
+                    {currentUserEmail ? (
+                      <span>☁️ <b>Lưu trữ đám mây:</b> Đang bật đồng bộ Firebase</span>
+                    ) : (
+                      <span>☁️ <b>Lưu trữ đám mây:</b> Chỉ lưu cục bộ trên trình duyệt này</span>
+                    )}
                   </div>
-                  {onLogout && (
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onClose();
-                        onLogout();
-                      }}
-                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-200 text-[11px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95"
-                    >
-                      <LogOut className="w-3 h-3" />
-                      <span>Đăng xuất / Đổi tài khoản</span>
-                    </button>
+                  {currentUserEmail ? (
+                    onLogout && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onLogout();
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-200 text-[11px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95"
+                      >
+                        <LogOut className="w-3 h-3" />
+                        <span>Đăng xuất / Đổi tài khoản</span>
+                      </button>
+                    )
+                  ) : (
+                    onOpenCloudSync && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          onClose();
+                          onOpenCloudSync();
+                        }}
+                        className="px-2.5 py-1 rounded-lg bg-blue-600 hover:bg-blue-700 text-white text-[11px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95 border border-transparent"
+                      >
+                        <span>Đăng nhập Google</span>
+                      </button>
+                    )
                   )}
                 </div>
               </div>
@@ -544,26 +568,6 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
                   </button>
                 </div>
               </div>
-
-              {/* Guest Sync Option */}
-              {isGuestMode && onOpenCloudSync && (
-                <div className="p-3.5 bg-amber-50 rounded-2xl border-2 border-amber-200 text-left">
-                  <span className="text-xs font-bold text-amber-900 block">🎮 Đang dùng Chế độ Khách</span>
-                  <p className="text-[11px] text-amber-800 mt-1 leading-relaxed">
-                    Đồng bộ lên tài khoản Google để bảo vệ thời khóa biểu vĩnh viễn trên đám mây.
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      onClose();
-                      onOpenCloudSync();
-                    }}
-                    className="mt-2.5 w-full py-2 px-3 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-xs font-extrabold transition-colors cursor-pointer flex items-center justify-center gap-1"
-                  >
-                    <span>☁️ Lưu Google Drive</span>
-                  </button>
-                </div>
-              )}
 
               {/* Footer Quick Actions */}
               <div className="pt-2 flex flex-wrap items-center justify-between gap-2 border-t border-slate-100 text-xs font-bold">

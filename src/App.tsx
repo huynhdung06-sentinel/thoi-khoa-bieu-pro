@@ -70,7 +70,7 @@ import { KnowledgeSummaryView } from './components/KnowledgeSummaryView';
 import { ClassSettingsModal } from './components/ClassSettingsModal';
 import { EditPeriodTimesModal } from './components/EditPeriodTimesModal';
 import { BreadcrumbNav } from './components/BreadcrumbNav';
-import { RegistrationIntro } from './components/RegistrationIntro';
+import { LoginModal } from './components/LoginModal';
 import { ParentPinChallengeModal } from './components/ParentPinChallengeModal';
 import { ParentDashboardModal } from './components/ParentDashboardModal';
 import { AboutStoryModal } from './components/AboutStoryModal';
@@ -329,47 +329,13 @@ export default function App() {
       if (urlParams.get('student') || urlParams.get('token') || (urlParams.get('family') && urlParams.get('child'))) {
         return false;
       }
-      const introDismissed = localStorage.getItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
-      const rememberedId = localStorage.getItem('mindmap_remembered_student_id') || localStorage.getItem(`${STORAGE_KEY_PREFIX}active_child_id`);
-      const savedRole = localStorage.getItem(`${STORAGE_KEY_PREFIX}role`);
-
-      if (introDismissed === 'true' || rememberedId || savedRole === 'admin') {
-        return false; // Auto skip intro into app
-      }
     } catch (e) {
       console.error(e);
     }
-    return true;
+    return true; // Enforce login screen by default on reload
   });
-
 
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState<boolean>(false);
-
-  // Chế độ Khách (Play as Guest) & Trải nghiệm nhanh 10 phút
-  const [isGuestMode, setIsGuestMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem(`${STORAGE_KEY_PREFIX}is_guest`) === 'true';
-    } catch {
-      return false;
-    }
-  });
-
-  // Demo 10-minute countdown state
-  const [demoTimeRemaining, setDemoTimeRemaining] = useState<number | null>(() => {
-    try {
-      const expiresStr = localStorage.getItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
-      if (expiresStr) {
-        const expiresAt = parseInt(expiresStr, 10);
-        const diff = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-        if (diff > 0) return diff;
-      }
-    } catch {}
-    return null;
-  });
-  const [showDemoExpiredModal, setShowDemoExpiredModal] = useState<boolean>(false);
-  const [showAccountLinkingModal, setShowAccountLinkingModal] = useState<boolean>(false);
-  const [isLinkingAccount, setIsLinkingAccount] = useState<boolean>(false);
-  const [linkingError, setLinkingError] = useState<string>('');
 
   // 1. Dashboard Tab Navigation with Local Persistence (Remembers active session on F5)
   const VALID_DASHBOARD_TABS: DashboardTab[] = ['timetable', 'lessons', 'knowledge_summary', 'analytics', 'mindmap_gallery'];
@@ -546,6 +512,7 @@ export default function App() {
   const [periods, setPeriods] = useState<PeriodInfo[]>(() => STANDARD_PERIODS);
 
   const [currentUser, setCurrentUser] = useState<any>(null);
+  const [isAuthLoading, setIsAuthLoading] = useState<boolean>(true);
   const [studentParentUserId, setStudentParentUserId] = useState<string | null>(() => {
     try {
       return localStorage.getItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
@@ -559,6 +526,7 @@ export default function App() {
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      setIsAuthLoading(false);
       if (user) {
         setStudentParentUserId(user.uid);
         try {
@@ -591,12 +559,8 @@ export default function App() {
           localStorage.removeItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
         } catch {}
         
-        // Nếu không có user đăng nhập và không phải đang trong phiên Demo 10 phút -> ép hiển thị màn hình Đăng nhập
-        const isGuest = localStorage.getItem(`${STORAGE_KEY_PREFIX}is_guest`) === 'true';
-        if (!isGuest) {
-          setActiveChildProfile(null);
-          setIsIntroOpen(true);
-        }
+        setActiveChildProfile(null);
+        setIsIntroOpen(true);
       }
     });
     return () => unsubscribe();
@@ -621,6 +585,7 @@ export default function App() {
         let localDataFound = false;
         try {
           const isParentRole = currentRole === 'admin';
+
           const [
             localClassInfo,
             localSubjects,
@@ -674,7 +639,7 @@ export default function App() {
             loadedChildIdRef.current = id;
           }
         } catch (localErr) {
-          console.warn('Could not read app_data from IndexedDB, falling back to cloud:', localErr);
+          console.warn('Could not read app_data from IndexedDB, falling back:', localErr);
         }
 
         // 2. Nếu IndexedDB chưa có dữ liệu -> giữ nguyên flow Cloud hiện tại làm fallback
@@ -690,63 +655,62 @@ export default function App() {
           if (!isMounted) return;
 
           if (firebaseData) {
-            setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
-            setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
-            setSubjects(firebaseData.subjects || SUBJECTS_LIST);
-            setPeriods(firebaseData.periods || STANDARD_PERIODS);
-            setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
-            setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
-            setStudyRecords(firebaseData.studyRecords || []);
-            setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
-            loadedChildIdRef.current = id;
-          } else {
-            // Initialize new child state
-            const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
-            const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
-              ? rawGrade
-              : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
-            
-            setClassInfo({
-              ...INITIAL_CLASS_INFO,
-              studentName: activeChildProfile.name,
-              className: finalClass,
-              weekStartDate: getVietnamCurrentMondayStr()
-            });
-            setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
-            setSubjects(SUBJECTS_LIST);
-            setPeriods(STANDARD_PERIODS);
-            setLessons(INITIAL_LESSONS_BANK);
-            const activeSlots = INITIAL_TIMETABLE_SLOTS;
-            const currentMonday = getVietnamCurrentMondayStr();
-            const defaultPlans = generateInitialLessonPlans(activeSlots, currentMonday);
-            setLessonPlans(defaultPlans);
-            setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
-            setDocuments(INITIAL_DOCUMENTS);
-            loadedChildIdRef.current = id;
+              setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
+              setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
+              setSubjects(firebaseData.subjects || SUBJECTS_LIST);
+              setPeriods(firebaseData.periods || STANDARD_PERIODS);
+              setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
+              setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
+              setStudyRecords(firebaseData.studyRecords || []);
+              setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
+              loadedChildIdRef.current = id;
+            } else {
+              // Initialize new child state
+              const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
+              const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+                ? rawGrade
+                : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+              
+              setClassInfo({
+                ...INITIAL_CLASS_INFO,
+                studentName: activeChildProfile.name,
+                className: finalClass,
+                weekStartDate: getVietnamCurrentMondayStr()
+              });
+              setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
+              setSubjects(SUBJECTS_LIST);
+              setPeriods(STANDARD_PERIODS);
+              setLessons(INITIAL_LESSONS_BANK);
+              const activeSlots = INITIAL_TIMETABLE_SLOTS;
+              const currentMonday = getVietnamCurrentMondayStr();
+              const defaultPlans = generateInitialLessonPlans(activeSlots, currentMonday);
+              setLessonPlans(defaultPlans);
+              setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
+              setDocuments(INITIAL_DOCUMENTS);
+              loadedChildIdRef.current = id;
 
-            // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately! (Only for student role)
-            if (currentRole !== 'admin' && family.familyCode) {
-              const initialPayload = {
-                classInfo: {
-                  ...INITIAL_CLASS_INFO,
-                  studentName: activeChildProfile.name,
-                  className: finalClass,
-                  weekStartDate: currentMonday
-                },
-                timetableSlots: INITIAL_TIMETABLE_SLOTS,
-                subjects: SUBJECTS_LIST,
-                periods: STANDARD_PERIODS,
-                lessons: INITIAL_LESSONS_BANK,
-                lessonPlans: defaultPlans,
-                studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
-                documents: INITIAL_DOCUMENTS
-              };
-              syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+              // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately! (Only for student role)
+              if (currentRole !== 'admin' && family.familyCode) {
+                const initialPayload = {
+                  classInfo: {
+                    ...INITIAL_CLASS_INFO,
+                    studentName: activeChildProfile.name,
+                    className: finalClass,
+                    weekStartDate: currentMonday
+                  },
+                  timetableSlots: INITIAL_TIMETABLE_SLOTS,
+                  subjects: SUBJECTS_LIST,
+                  periods: STANDARD_PERIODS,
+                  lessons: INITIAL_LESSONS_BANK,
+                  lessonPlans: defaultPlans,
+                  studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
+                  documents: INITIAL_DOCUMENTS
+                };
+                syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+              }
             }
           }
-        }
-
-      } catch (err) {
+        } catch (err) {
         console.error('Failed to hydrate profile', err);
         loadedChildIdRef.current = null;
       } finally {
@@ -1169,7 +1133,7 @@ export default function App() {
     }
   };
 
-  const handleGoogleLogin = async (role: UserRole) => {
+  const handleGoogleLogin = async () => {
     try {
       const user = await signInWithGoogle();
       if (!user) {
@@ -1177,47 +1141,30 @@ export default function App() {
         return;
       }
       setCurrentUser(user);
-      if (role === 'student') {
-        const childId = user.uid;
-        const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
-        const childProfile: ChildProfile = {
-          id: childId,
-          name: studentRealName,
-          grade: 6,
-          className: 'Lớp 6A',
-          avatar: '🚀',
-          studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase()
-        };
-        setActiveChildProfile(childProfile);
-        setClassInfo((prev) => ({
-          ...prev,
-          studentName: studentRealName,
-          className: prev.className || 'Lớp 6A'
-        }));
-        setCurrentRole('student');
-        setIsGuestMode(false);
-        try {
-          localStorage.setItem('mindmap_remembered_student_id', childId);
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
-        } catch {}
-        setIsIntroOpen(false);
-      } else {
-        setActiveChildProfile(null);
-        setCurrentRole('admin');
-        setFamily((prev) => ({
-          ...prev,
-          parentName: user.displayName || 'Phụ huynh',
-          parentEmail: user.email || ''
-        }));
-        try {
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-          localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
-        } catch {}
-        setIsIntroOpen(false);
-        setShowParentDashboard(true);
-      }
+      const childId = user.uid;
+      const studentRealName = user.displayName || (user.email ? user.email.split('@')[0] : 'Học sinh');
+      const childProfile: ChildProfile = {
+        id: childId,
+        name: studentRealName,
+        grade: 6,
+        className: 'Lớp 6A',
+        avatar: '🚀',
+        studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase()
+      };
+      setActiveChildProfile(childProfile);
+      setClassInfo((prev) => ({
+        ...prev,
+        studentName: studentRealName,
+        className: prev.className || 'Lớp 6A'
+      }));
+      setCurrentRole('student');
+      try {
+        localStorage.setItem('mindmap_remembered_student_id', childId);
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+        localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
+      } catch {}
+      setIsIntroOpen(false);
     } catch (err: any) {
       const code = err?.code || '';
       if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') {
@@ -1237,9 +1184,9 @@ export default function App() {
     setCurrentUser(null);
     setStudentParentUserId(null);
     setActiveChildProfile(null);
-    setIsGuestMode(false);
-    setDemoTimeRemaining(null);
 
+    // Chỉ xóa các session / Auth token liên quan đến phiên đăng nhập
+    // TUYỆT ĐỐI KHÔNG xóa localStorage.clear() hoặc IndexedDB dữ liệu học tập
     try {
       localStorage.removeItem('mindmap_remembered_student_id');
       localStorage.removeItem('mindmap_remembered_family_code');
@@ -1247,10 +1194,7 @@ export default function App() {
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}role`);
       localStorage.removeItem(`${STORAGE_KEY_PREFIX}student_parent_uid`);
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
       localStorage.removeItem('vulang_saved_student_uid');
-      sessionStorage.clear();
     } catch {}
 
     setClassInfo({
@@ -1259,68 +1203,6 @@ export default function App() {
       weekStartDate: getVietnamCurrentMondayStr()
     });
     setIsIntroOpen(true);
-  };
-
-  // Link Guest Account to Google Cloud
-  const handleExecuteAccountLinking = async () => {
-    setIsLinkingAccount(true);
-    setLinkingError('');
-    try {
-      const user = await signInWithGoogle();
-      if (user) {
-        const childId = activeChildProfile?.id || 'child_1';
-        const childToSave: ChildProfile = activeChildProfile || {
-          id: childId,
-          name: classInfo.studentName || 'Học sinh',
-          grade: 6,
-          className: classInfo.className || 'Lớp 6A',
-          avatar: '🚀',
-        };
-
-        const updatedFamily: FamilyAccount = {
-          parentName: user.displayName || family.parentName || 'Bố Mẹ',
-          parentPin: family.parentPin || '1234',
-          children: family.children && family.children.length > 0 ? family.children : [childToSave]
-        };
-
-        await createFamilyAccount(user.uid, {
-          parentName: updatedFamily.parentName,
-          parentPin: updatedFamily.parentPin
-        });
-
-        await createChildProfile(user.uid, childToSave);
-
-        await saveChildData(user.uid, childId, {
-          classInfo,
-          subjects,
-          timetableSlots,
-          lessons,
-          lessonPlans,
-          studyRecords,
-          documents,
-          periods
-        });
-
-        setFamily(updatedFamily);
-        setIsGuestMode(false);
-        try {
-          localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
-        } catch {}
-
-        setShowAccountLinkingModal(false);
-        alert('🎉 Chúc mừng! Thời khóa biểu của bạn đã được sao lưu an toàn lên tài khoản Google.');
-      }
-    } catch (err: any) {
-      console.error('Error linking account:', err);
-      const errMsg = err?.message || '';
-      if (err?.code === 'auth/unauthorized-domain' || errMsg.includes('auth/unauthorized-domain')) {
-        setLinkingError('Tên miền máy chủ chưa được thêm vào Firebase Authorized Domains. Bạn có thể tiếp tục sử dụng bình thường trên thiết bị này!');
-      } else {
-        setLinkingError('Đăng nhập không thành công: ' + (errMsg || 'Vui lòng thử lại sau.'));
-      }
-    } finally {
-      setIsLinkingAccount(false);
-    }
   };
 
   // Week navigation
@@ -2111,7 +1993,6 @@ export default function App() {
       // Tự động đóng màn hình Intro và đăng nhập vào góc học tập máy con
       setIsIntroOpen(false);
       setCurrentRole('student');
-      setIsGuestMode(false);
 
       setLastBackupTimestamp();
       refreshBackupStatus();
@@ -2210,112 +2091,6 @@ export default function App() {
       setShowParentPin(true);
     }
   };
-
-  // ----------------- DEMO 10-MINUTE SESSION CONTROLLER -----------------
-  // Start a fresh 10-minute trial session with default sample data
-  const startDemoSession = () => {
-    const durationSeconds = 10 * 60; // 10 minutes = 600s
-    const expiresAt = Date.now() + durationSeconds * 1000;
-
-    try {
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}demo_expires_at`, expiresAt.toString());
-      localStorage.setItem(`${STORAGE_KEY_PREFIX}is_guest`, 'true');
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Reset everything to sample dataset
-    const currentMonday = getVietnamCurrentMondayStr();
-    setClassInfo({
-      ...INITIAL_CLASS_INFO,
-      studentName: 'Học viên Trải nghiệm',
-      className: 'Lớp 10A1',
-      weekStartDate: currentMonday,
-    });
-    setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
-    setLessons(INITIAL_LESSONS_BANK);
-    setDocuments(INITIAL_DOCUMENTS);
-    const plans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
-    setLessonPlans(plans);
-    setStudyRecords(generateInitialStudyRecords(plans, 'Học viên Trải nghiệm'));
-
-    const demoGuestChild: ChildProfile = {
-      id: 'demo_guest_student',
-      name: 'Học viên Trải nghiệm',
-      grade: '10',
-      className: 'Lớp 10A1',
-      avatar: '🚀',
-      studentCode: 'DEMO10',
-    };
-
-    setActiveChildProfile(demoGuestChild);
-    setIsGuestMode(true);
-    setDemoTimeRemaining(durationSeconds);
-    setCurrentRole('student');
-    setIsIntroOpen(false);
-  };
-
-  // Reset and Exit Demo -> Back to clean Intro and pristine default data
-  const handleResetAndExitDemo = (showExpiredAlert = false) => {
-    try {
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
-      localStorage.removeItem(`${STORAGE_KEY_PREFIX}is_guest`);
-      localStorage.removeItem('mindmap_remembered_student_id');
-    } catch (e) {
-      console.error(e);
-    }
-
-    // Revert all internal state to clean defaults
-    const currentMonday = getVietnamCurrentMondayStr();
-    setClassInfo({
-      ...INITIAL_CLASS_INFO,
-      weekStartDate: currentMonday,
-    });
-    setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
-    setLessons(INITIAL_LESSONS_BANK);
-    setDocuments(INITIAL_DOCUMENTS);
-    const plans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
-    setLessonPlans(plans);
-    setStudyRecords(generateInitialStudyRecords(plans, INITIAL_CLASS_INFO.studentName));
-
-    setIsGuestMode(false);
-    setDemoTimeRemaining(null);
-    setActiveChildProfile(family.children[0] || null);
-    setIsIntroOpen(true);
-
-    if (showExpiredAlert) {
-      setShowDemoExpiredModal(true);
-    }
-  };
-
-  // 10-Minute Demo countdown tick
-  useEffect(() => {
-    if (demoTimeRemaining === null || isIntroOpen) return;
-
-    const timer = setInterval(() => {
-      try {
-        const expiresStr = localStorage.getItem(`${STORAGE_KEY_PREFIX}demo_expires_at`);
-        if (!expiresStr) {
-          setDemoTimeRemaining(null);
-          return;
-        }
-        const expiresAt = parseInt(expiresStr, 10);
-        const remaining = Math.max(0, Math.floor((expiresAt - Date.now()) / 1000));
-
-        if (remaining <= 0) {
-          clearInterval(timer);
-          setDemoTimeRemaining(0);
-          handleResetAndExitDemo(true);
-        } else {
-          setDemoTimeRemaining(remaining);
-        }
-      } catch {
-        setDemoTimeRemaining((prev) => (prev && prev > 1 ? prev - 1 : 0));
-      }
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [demoTimeRemaining, isIntroOpen]);
 
   const handleSelectChild = (child: ChildProfile) => {
     setActiveChildProfile(child);
@@ -2537,7 +2312,7 @@ export default function App() {
     }
   };
 
-  if (isCloudLoading) {
+  if (isAuthLoading || isCloudLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-blue-600 via-indigo-700 to-sky-800 text-white flex flex-col items-center justify-center p-6 font-sans">
         <div className="max-w-md w-full bg-white/10 backdrop-blur-xl border border-white/20 p-8 rounded-3xl shadow-2xl text-center space-y-6 animate-in fade-in zoom-in-95 duration-300">
@@ -2559,110 +2334,14 @@ export default function App() {
 
   if (isIntroOpen) {
     return (
-      <RegistrationIntro
-        family={family}
-        onUpdateFamily={(updated) => {
-          setFamily(updated);
-          saveSafeItem(`${STORAGE_KEY_PREFIX}family_account`, updated);
-        }}
-        onSelectChild={(child) => {
-          setIsGuestMode(false);
-          setActiveChildProfile(child);
-          const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
-          const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
-            ? rawGrade
-            : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
-          setClassInfo((prev) => ({
-            ...prev,
-            studentName: child.name,
-            className: finalClass,
-          }));
-          setCurrentRole('student');
-          try {
-            localStorage.setItem('mindmap_remembered_student_id', child.id);
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, child.id);
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
-            if (family.familyCode) {
-              localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
-            }
-          } catch (e) {
-            console.error(e);
-          }
-          setIsIntroOpen(false);
-        }}
-        onAddChild={(newChildData) => {
-          const newChild: ChildProfile = {
-            ...newChildData,
-            id: 'child_' + Date.now().toString(),
-          };
-          const updatedFamily: FamilyAccount = {
-            ...family,
-            children: [...family.children, newChild],
-          };
-          setFamily(updatedFamily);
-          saveSafeItem(`${STORAGE_KEY_PREFIX}family_account`, updatedFamily);
-          setActiveChildProfile(newChild);
-        }}
-        onSelectParent={() => {
-          setActiveChildProfile(null);
-          setClassInfo((prev) => ({
-            ...prev,
-            studentName: family.parentName,
-          }));
-          setCurrentRole('admin');
-          try {
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
-            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
-            if (family.familyCode) {
-              localStorage.setItem('mindmap_remembered_family_code', family.familyCode);
-            }
-          } catch (e) {
-            console.error(e);
-          }
-          setIsIntroOpen(false);
-          setShowParentDashboard(true);
-        }}
-        onImportBackupData={handleImportData}
-        onStartDemo={startDemoSession}
+      <LoginModal
         onGoogleLogin={handleGoogleLogin}
-        onClose={currentUser || isGuestMode ? () => setIsIntroOpen(false) : undefined}
       />
     );
   }
 
   return (
     <div className="min-h-screen bg-slate-100 text-slate-900 flex flex-col font-sans transition-colors">
-      
-      {/* ⏱️ 10-Minute Demo Mode Live Floating Bar */}
-      {demoTimeRemaining !== null && (
-        <div className="bg-amber-400 text-slate-950 px-4 py-2 text-xs font-bold flex items-center justify-between shadow-xs sticky top-0 z-50 border-b border-amber-500/50">
-          <div className="flex items-center gap-2">
-            <span className="flex h-2.5 w-2.5 relative">
-              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-900 opacity-75"></span>
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-amber-900"></span>
-            </span>
-            <span>
-              ⏱️ Chế độ Trải nghiệm nhanh: Còn lại{' '}
-              <span className="font-mono text-sm bg-amber-500/40 px-1.5 py-0.5 rounded text-slate-950 font-black">
-                {String(Math.floor(demoTimeRemaining / 60)).padStart(2, '0')}:
-                {String(demoTimeRemaining % 60).padStart(2, '0')}
-              </span>
-            </span>
-            <span className="hidden sm:inline text-amber-950/80 font-medium">
-              • Tự động đặt lại dữ liệu gốc sau 10 phút.
-            </span>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => handleResetAndExitDemo(false)}
-            className="px-2.5 py-1 bg-slate-900 hover:bg-slate-950 text-white text-[11px] font-bold rounded-lg transition-colors cursor-pointer flex items-center gap-1 shadow-2xs"
-          >
-            <span>Thoát & Đặt lại</span>
-          </button>
-        </div>
-      )}
 
       {/* Hidden File Input for Data Restore */}
       <input 
@@ -2727,8 +2406,6 @@ export default function App() {
         viewerStudentName={viewerStudentProfile?.studentName || classInfo.studentName}
         onExitViewerMode={handleExitViewerMode}
         onRefreshViewerData={handleRefreshViewerData}
-        isGuestMode={isGuestMode}
-        onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         backupStatus={backupStatus}
         onOpenBackupReminder={() => setShowBackupReminderModal(true)}
         onOpenFamilyCodeCard={() => setShowFamilyCodeModal(true)}
@@ -3102,6 +2779,7 @@ export default function App() {
           onUpdateFamily={setFamily}
           currentRole={currentRole}
           activeChildProfile={activeChildProfile}
+          currentUserEmail={currentUser?.email || undefined}
           onSelectChild={(child) => {
             setActiveChildProfile(child);
             const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
@@ -3152,8 +2830,6 @@ export default function App() {
             setIsIntroOpen(true);
           }}
           backupStatus={backupStatus}
-          isGuestMode={isGuestMode}
-          onOpenCloudSync={() => setShowAccountLinkingModal(true)}
           onExitParentMode={() => {
             setShowParentDashboard(false);
             setCurrentRole('student');
@@ -3166,79 +2842,6 @@ export default function App() {
         <AboutStoryModal
           onClose={() => setShowAboutStory(false)}
         />
-      )}
-
-      {/* Modal: Account Linking (Guest Mode -> Google Cloud Sync) */}
-      {showAccountLinkingModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="flex items-center gap-3">
-              <div className="w-12 h-12 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center text-2xl border border-amber-200 shrink-0">
-                ☁️
-              </div>
-              <div>
-                <h3 className="text-base md:text-lg font-black text-slate-800">
-                  Lưu thời khóa biểu lên Google
-                </h3>
-                <p className="text-xs text-slate-500">
-                  Chuyển từ Tài khoản Khách sang Đám mây vĩnh viễn
-                </p>
-              </div>
-            </div>
-
-            <div className="p-3.5 bg-blue-50/70 rounded-xl border border-blue-200 text-xs text-slate-700 space-y-2">
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
-                <span>Toàn bộ thời khóa biểu, môn học, sơ đồ tư duy đã soạn sẽ <strong>được giữ nguyên 100%</strong>.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
-                <span>Mở xem và chỉnh sửa dễ dàng trên điện thoại, máy tính bảng hay máy tính khác.</span>
-              </div>
-              <div className="flex items-start gap-2">
-                <span className="text-blue-600 font-bold">✓</span>
-                <span>An tâm không lo mất dữ liệu nếu lỡ dọn dẹp trình duyệt.</span>
-              </div>
-            </div>
-
-            {linkingError && (
-              <div className="p-3 bg-red-50 border border-red-200 rounded-xl text-xs text-red-700 leading-relaxed">
-                {linkingError}
-              </div>
-            )}
-
-            <div className="flex flex-col gap-2 pt-1">
-              <button
-                type="button"
-                disabled={isLinkingAccount}
-                onClick={handleExecuteAccountLinking}
-                className="w-full py-3 px-4 bg-indigo-600 hover:bg-indigo-700 text-white font-bold rounded-xl text-sm shadow-md transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
-              >
-                {isLinkingAccount ? (
-                  <span>Đang kết nối Google...</span>
-                ) : (
-                  <>
-                    <svg viewBox="0 0 24 24" className="w-5 h-5">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                    </svg>
-                    <span>Tiếp tục với Google để Lưu</span>
-                  </>
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowAccountLinkingModal(false)}
-                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 text-slate-700 font-semibold rounded-xl text-xs transition-all cursor-pointer"
-              >
-                Để sau (Tiếp tục dùng trên máy này)
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
       {/* Modal: Local-First Smart Backup Reminder */}
@@ -3263,6 +2866,7 @@ export default function App() {
           onUpdateFamily={setFamily}
           currentRole={currentRole}
           activeChildProfile={activeChildProfile}
+          currentUserEmail={currentUser?.email || undefined}
           onSelectChild={(child) => {
             setActiveChildProfile(child);
             const rawGrade = child.className || (child.grade ? String(child.grade) : 'Lớp học');
@@ -3298,8 +2902,6 @@ export default function App() {
             setIsIntroOpen(true);
           }}
           backupStatus={backupStatus}
-          isGuestMode={isGuestMode}
-          onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         />
       )}
 
@@ -3332,30 +2934,6 @@ export default function App() {
             window.history.replaceState({}, '', url.toString());
           }}
         />
-      )}
-
-      {/* Modal: Demo 10 Minutes Expired Notification */}
-      {showDemoExpiredModal && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-xs flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="bg-white rounded-2xl max-w-sm w-full p-6 text-center shadow-2xl border border-slate-200 animate-in zoom-in-95 duration-150">
-            <div className="w-14 h-14 rounded-2xl bg-amber-100 text-amber-600 flex items-center justify-center text-3xl mx-auto mb-4 font-bold shadow-xs">
-              ⏱️
-            </div>
-            <h3 className="text-base font-bold text-slate-900 mb-2">
-              Hết thời gian trải nghiệm nhanh!
-            </h3>
-            <p className="text-xs text-slate-600 leading-relaxed mb-5">
-              Phiên trải nghiệm demo <b>10 phút</b> đã kết thúc. Toàn bộ dữ liệu tạm thời đã được tự động làm mới và đặt lại mặc định an toàn.
-            </p>
-            <button
-              type="button"
-              onClick={() => setShowDemoExpiredModal(false)}
-              className="w-full py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white font-bold rounded-xl text-xs shadow-xs transition-colors cursor-pointer"
-            >
-              Đã hiểu & Về màn hình chính
-            </button>
-          </div>
-        </div>
       )}
 
 

@@ -63,7 +63,6 @@ interface HeaderTimetableProps {
   activeChildProfile: ChildProfile | null;
   onSelectChild: (child: ChildProfile) => void;
   onSelectParent: () => void;
-  isGuestMode?: boolean;
   onOpenCloudSync?: () => void;
   backupStatus?: {
     status: 'fresh' | 'pending' | 'warning';
@@ -118,7 +117,6 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   activeChildProfile,
   onSelectChild,
   onSelectParent,
-  isGuestMode,
   onOpenCloudSync,
   onExportData,
   onImportData,
@@ -394,22 +392,6 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             />
           )}
 
-          {/* Guest Mode Cloud Sync Pill */}
-          {isGuestMode && onOpenCloudSync && currentRole === 'admin' && (
-            <button
-              type="button"
-              onClick={onOpenCloudSync}
-              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-900 border border-amber-300 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 group"
-              title="Dữ liệu đang lưu tạm trên máy này. Bấm để đồng bộ lưu vĩnh viễn lên Google!"
-            >
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
-              <span className="hidden sm:inline font-bold">Khách</span>
-              <span className="text-[11px] bg-amber-200/80 text-amber-950 px-1.5 py-0.5 rounded font-black flex items-center gap-1">
-                ☁️ Lưu Google
-              </span>
-            </button>
-          )}
-
           {/* VIEWER MODE (Cha Mẹ mở link xem bài của con) */}
           {isViewerMode ? (
             <div className="flex items-center gap-2">
@@ -606,7 +588,6 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
           onSwitchProfile={onSwitchProfile}
           onLogout={onLogout}
           backupStatus={backupStatus}
-          isGuestMode={isGuestMode}
           onOpenCloudSync={onOpenCloudSync}
           currentUserEmail={currentUserEmail}
         />

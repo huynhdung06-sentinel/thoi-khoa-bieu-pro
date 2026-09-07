@@ -4,8 +4,7 @@ import {
   GoogleAuthProvider, 
   signInWithPopup, 
   signOut as firebaseSignOut, 
-  onAuthStateChanged,
-  signInAnonymously
+  onAuthStateChanged
 } from 'firebase/auth';
 import { 
   getFirestore,
@@ -420,17 +419,10 @@ export const decodeSubAccountToken = (tokenStr: string): SubAccountToken | null 
 };
 
 /**
- * Firebase Anonymous Auth for instantaneous, zero-delay sub-account sessions
+ * Firebase Anonymous Auth disabled - Google is the sole authentication provider
  */
 export const signInAnonymouslyUser = async () => {
-  try {
-    if (auth.currentUser) return auth.currentUser;
-    const cred = await signInAnonymously(auth);
-    return cred.user;
-  } catch (err) {
-    console.warn('Anonymous auth offline/fallback:', err);
-    return null;
-  }
+  return auth.currentUser;
 };
 
 /**
