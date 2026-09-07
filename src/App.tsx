@@ -2637,6 +2637,7 @@ export default function App() {
           setIsIntroOpen(true);
         }}
         currentChildAvatar={activeChildProfile?.avatar}
+        currentUserEmail={currentUser?.email || undefined}
         onShareReport={captureTimetable}
         isCapturing={isCapturingReport}
         isVictory={hasCelebratedToday}

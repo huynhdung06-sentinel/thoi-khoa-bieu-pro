@@ -59,6 +59,7 @@ interface UnifiedFamilyModalProps {
   isGuestMode?: boolean;
   onOpenCloudSync?: () => void;
   onExitParentMode?: () => void;
+  currentUserEmail?: string;
 }
 
 const AVAILABLE_AVATARS = ['🚀', '🐱', '🦁', '🦊', '🐼', '🐬', '🦄', '⭐', '⚽', '🎮', '🎨', '📚'];
@@ -100,6 +101,7 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
   isGuestMode,
   onOpenCloudSync,
   onExitParentMode,
+  currentUserEmail,
 }) => {
   const [activeTab, setActiveTab] = useState<FamilyModalTab>(defaultTab);
 
@@ -362,6 +364,50 @@ export const UnifiedFamilyModal: React.FC<UnifiedFamilyModalProps> = ({
           {activeTab === 'overview' && (
             <div className="space-y-5 animate-in fade-in duration-150">
               
+              {/* Account & Login Status Card */}
+              <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-50 to-indigo-50/60 border border-blue-200/80 text-xs space-y-3 shadow-xs">
+                <div className="flex items-center justify-between gap-2">
+                  <div className="flex items-center gap-2.5">
+                    <div className="w-9 h-9 rounded-xl bg-blue-600 text-white flex items-center justify-center font-bold text-sm shadow-xs shrink-0">
+                      👤
+                    </div>
+                    <div>
+                      <div className="text-[10px] text-blue-700 font-extrabold uppercase tracking-wider">
+                        Tài khoản Google / Đăng nhập
+                      </div>
+                      <div className="text-xs font-black text-slate-900 truncate">
+                        {currentUserEmail || 'huynhdung06@gmail.com'}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 border border-emerald-300">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                      Đã kết nối
+                    </span>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-blue-200/60 flex flex-wrap items-center justify-between gap-2 text-[11px] text-slate-600">
+                  <div className="flex items-center gap-1.5 font-medium">
+                    <span>☁️ <b>Lưu trữ đám mây:</b> Đang bật đồng bộ Firebase</span>
+                  </div>
+                  {onLogout && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onClose();
+                        onLogout();
+                      }}
+                      className="px-2.5 py-1 rounded-lg bg-white hover:bg-red-50 text-red-600 hover:text-red-700 border border-red-200 text-[11px] font-bold transition-all shadow-2xs cursor-pointer flex items-center gap-1 active:scale-95"
+                    >
+                      <LogOut className="w-3 h-3" />
+                      <span>Đăng xuất / Đổi tài khoản</span>
+                    </button>
+                  )}
+                </div>
+              </div>
+
               {/* Member Cards Grid */}
               <div className="space-y-2.5">
                 <div className="pb-1 border-b border-slate-100 flex items-center justify-between">

@@ -86,6 +86,7 @@ interface HeaderTimetableProps {
   viewerStudentName?: string;
   onExitViewerMode?: () => void;
   onRefreshViewerData?: () => void;
+  currentUserEmail?: string;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -137,6 +138,7 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   viewerStudentName,
   onExitViewerMode,
   onRefreshViewerData,
+  currentUserEmail,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -454,11 +456,29 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
                 </button>
               )}
 
-              {/* Student Profile Badge */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs font-extrabold text-emerald-800 dark:text-emerald-300 shrink-0">
-                <span className="text-sm select-none">{activeChildProfile?.avatar || currentChildAvatar || '👦'}</span>
-                <span>{classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}</span>
-              </div>
+              {/* Account & Profile Button */}
+              <button
+                type="button"
+                onClick={() => {
+                  setProfileModalTab('overview');
+                  setIsProfileMenuOpen(true);
+                }}
+                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 shadow-2xs text-xs font-bold text-emerald-900 dark:text-emerald-200 transition-all cursor-pointer active:scale-95 shrink-0 group"
+                title="Bấm để mở Quản lý Tài Khoản, Hồ Sơ Học Sinh & Đổi Người Học 👤"
+              >
+                <div className="w-6 h-6 rounded-lg bg-emerald-200/80 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 flex items-center justify-center text-sm shrink-0 group-hover:scale-110 transition-transform">
+                  {activeChildProfile?.avatar || currentChildAvatar || '👦'}
+                </div>
+                <div className="flex flex-col text-left leading-tight max-w-[100px] sm:max-w-[130px] truncate">
+                  <span className="font-extrabold text-[11px] text-emerald-950 dark:text-emerald-100 truncate">
+                    {classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}
+                  </span>
+                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold truncate flex items-center gap-1">
+                    <span>👤 Tài Khoản</span>
+                  </span>
+                </div>
+                <ChevronDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
+              </button>
             </>
           )}
 
@@ -559,6 +579,38 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
           </div>
         )}
       </div>
+
+      {/* Unified Family & Account Modal */}
+      {isProfileMenuOpen && (
+        <UnifiedFamilyModal
+          isOpen={isProfileMenuOpen}
+          onClose={() => setIsProfileMenuOpen(false)}
+          defaultTab={profileModalTab}
+          family={family}
+          onUpdateFamily={onUpdateFamily || (() => {})}
+          currentRole={currentRole}
+          activeChildProfile={activeChildProfile}
+          onSelectChild={(child) => {
+            onSelectChild(child);
+            setIsProfileMenuOpen(false);
+          }}
+          onSelectParent={() => {
+            onSelectParent();
+            setIsProfileMenuOpen(false);
+          }}
+          onAddChild={onAddChild}
+          onEditChild={onEditChild}
+          onDeleteChild={onDeleteChild}
+          onExportData={onExportData}
+          onImportData={onImportData}
+          onSwitchProfile={onSwitchProfile}
+          onLogout={onLogout}
+          backupStatus={backupStatus}
+          isGuestMode={isGuestMode}
+          onOpenCloudSync={onOpenCloudSync}
+          currentUserEmail={currentUserEmail}
+        />
+      )}
 
       {showLogoutConfirm && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
