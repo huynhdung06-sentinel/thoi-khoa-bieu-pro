@@ -40,6 +40,7 @@ import {
   fetchFamilyByCodeFromCloud,
   syncChildDataByCodeToCloud,
   fetchChildDataByCodeFromCloud,
+  subscribeChildDataByCode,
   signInAnonymouslyUser,
   decodeSubAccountToken,
   subscribeSubAccountData,
@@ -581,7 +582,7 @@ export default function App() {
       loadedChildIdRef.current = null;
 
       try {
-        // 1. Ưu tiên thử đọc app_data từ IndexedDB cho 8 entity
+        // 1. Nạp dữ liệu cục bộ từ IndexedDB trước để hiển thị tức thì (0ms)
         let localDataFound = false;
         try {
           const isParentRole = currentRole === 'admin';
@@ -642,74 +643,99 @@ export default function App() {
           console.warn('Could not read app_data from IndexedDB, falling back:', localErr);
         }
 
-        // 2. Nếu IndexedDB chưa có dữ liệu -> giữ nguyên flow Cloud hiện tại làm fallback
-        if (!localDataFound) {
-          let firebaseData = null;
-          if (effectiveUserId) {
-            firebaseData = await getChildData(effectiveUserId, id);
-          }
-          if (!firebaseData && family.familyCode) {
-            firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
-          }
-          
-          if (!isMounted) return;
+        // 2. Luôn kiểm tra Cloud để đồng bộ trạng thái mới nhất từ các thiết bị khác về máy
+        let firebaseData = null;
+        if (effectiveUserId) {
+          firebaseData = await getChildData(effectiveUserId, id);
+        }
+        if (!firebaseData && family.familyCode) {
+          firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id);
+        }
 
-          if (firebaseData) {
-              setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
-              setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
-              setSubjects(firebaseData.subjects || SUBJECTS_LIST);
-              setPeriods(firebaseData.periods || STANDARD_PERIODS);
-              setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
-              setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
-              setStudyRecords(firebaseData.studyRecords || []);
-              setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
-              loadedChildIdRef.current = id;
+        if (!isMounted) return;
+
+        if (firebaseData) {
+          // Cập nhật State với bản mới nhất từ Cloud
+          setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
+          setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
+          setSubjects(firebaseData.subjects || SUBJECTS_LIST);
+          setPeriods(firebaseData.periods || STANDARD_PERIODS);
+          setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
+          setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
+          setStudyRecords(firebaseData.studyRecords || []);
+          setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
+          loadedChildIdRef.current = id;
+
+          // Lưu bản mới nhất này vào IndexedDB để cache cục bộ được làm mới ngay
+          try {
+            if (currentRole === 'admin') {
+              await Promise.all([
+                saveChildLocalAppData(id, APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
+                saveChildLocalAppData(id, APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
+                saveChildLocalAppData(id, APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
+                saveChildLocalAppData(id, APP_DATA_KEYS.PERIODS, firebaseData.periods),
+                saveChildLocalAppData(id, APP_DATA_KEYS.LESSONS, firebaseData.lessons),
+                saveChildLocalAppData(id, APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
+                saveChildLocalAppData(id, APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
+                saveChildLocalAppData(id, APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
+              ]);
             } else {
-              // Initialize new child state
-              const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
-              const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
-                ? rawGrade
-                : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
-              
-              setClassInfo({
-                ...INITIAL_CLASS_INFO,
-                studentName: activeChildProfile.name,
-                className: finalClass,
-                weekStartDate: getVietnamCurrentMondayStr()
-              });
-              setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
-              setSubjects(SUBJECTS_LIST);
-              setPeriods(STANDARD_PERIODS);
-              setLessons(INITIAL_LESSONS_BANK);
-              const activeSlots = INITIAL_TIMETABLE_SLOTS;
-              const currentMonday = getVietnamCurrentMondayStr();
-              const defaultPlans = generateInitialLessonPlans(activeSlots, currentMonday);
-              setLessonPlans(defaultPlans);
-              setStudyRecords(generateInitialStudyRecords(defaultPlans, activeChildProfile.name));
-              setDocuments(INITIAL_DOCUMENTS);
-              loadedChildIdRef.current = id;
-
-              // 🚀 Instant Initial Sync: Ensure children_data subcollection is populated on Firestore immediately! (Only for student role)
-              if (currentRole !== 'admin' && family.familyCode) {
-                const initialPayload = {
-                  classInfo: {
-                    ...INITIAL_CLASS_INFO,
-                    studentName: activeChildProfile.name,
-                    className: finalClass,
-                    weekStartDate: currentMonday
-                  },
-                  timetableSlots: INITIAL_TIMETABLE_SLOTS,
-                  subjects: SUBJECTS_LIST,
-                  periods: STANDARD_PERIODS,
-                  lessons: INITIAL_LESSONS_BANK,
-                  lessonPlans: defaultPlans,
-                  studyRecords: generateInitialStudyRecords(defaultPlans, activeChildProfile.name),
-                  documents: INITIAL_DOCUMENTS
-                };
-                syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
-              }
+              await Promise.all([
+                saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
+                saveLocalAppData(APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
+                saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
+                saveLocalAppData(APP_DATA_KEYS.PERIODS, firebaseData.periods),
+                saveLocalAppData(APP_DATA_KEYS.LESSONS, firebaseData.lessons),
+                saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
+                saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
+                saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
+              ]);
             }
+          } catch (cacheErr) {
+            console.warn('Lỗi ghi đè cache IndexedDB từ Cloud:', cacheErr);
           }
+        } else if (!localDataFound) {
+          // Chưa có cả dữ liệu Cloud và Local -> khởi tạo dữ liệu mẫu sạch
+          const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
+          const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
+            ? rawGrade
+            : (!isNaN(Number(rawGrade)) ? `Lớp ${rawGrade}` : rawGrade);
+          
+          const currentMonday = getVietnamCurrentMondayStr();
+          const initialClassInfo = {
+            ...INITIAL_CLASS_INFO,
+            studentName: activeChildProfile.name,
+            className: finalClass,
+            weekStartDate: currentMonday
+          };
+          const defaultPlans = generateInitialLessonPlans(INITIAL_TIMETABLE_SLOTS, currentMonday);
+          const defaultRecords = generateInitialStudyRecords(defaultPlans, activeChildProfile.name);
+
+          setClassInfo(initialClassInfo);
+          setTimetableSlots(INITIAL_TIMETABLE_SLOTS);
+          setSubjects(SUBJECTS_LIST);
+          setPeriods(STANDARD_PERIODS);
+          setLessons(INITIAL_LESSONS_BANK);
+          setLessonPlans(defaultPlans);
+          setStudyRecords(defaultRecords);
+          setDocuments(INITIAL_DOCUMENTS);
+          loadedChildIdRef.current = id;
+
+          // Khởi tạo trên Cloud cho học sinh
+          if (currentRole !== 'admin' && family.familyCode) {
+            const initialPayload = {
+              classInfo: initialClassInfo,
+              timetableSlots: INITIAL_TIMETABLE_SLOTS,
+              subjects: SUBJECTS_LIST,
+              periods: STANDARD_PERIODS,
+              lessons: INITIAL_LESSONS_BANK,
+              lessonPlans: defaultPlans,
+              studyRecords: defaultRecords,
+              documents: INITIAL_DOCUMENTS
+            };
+            syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
+          }
+        }
         } catch (err) {
         console.error('Failed to hydrate profile', err);
         loadedChildIdRef.current = null;
@@ -727,28 +753,54 @@ export default function App() {
     return () => { isMounted = false; };
   }, [activeChildProfile?.id, effectiveUserId, family.familyCode, currentRole, transferUpdateTrigger]);
 
-  // 2-Way Realtime Stream Listener for Sub-Accounts (Parent <-> Child live sync via onSnapshot)
+  // 2-Way Realtime Stream Listener for Sub-Accounts & Family Code (Multi-device live sync via onSnapshot)
   useEffect(() => {
     const subId = activeChildProfile?.subId;
-    if (!subId) return;
+    const famCode = family?.familyCode;
+    const childId = activeChildProfile?.id;
 
-    const unsubscribe = subscribeSubAccountData(subId, (realtimeData) => {
-      if (realtimeData && isHydrated && !isHydratingRef.current) {
-        if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
-        if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
-        if (realtimeData.subjects) setSubjects(realtimeData.subjects);
-        if (realtimeData.lessons) setLessons(realtimeData.lessons);
-        if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
-        if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
-        if (realtimeData.documents) setDocuments(realtimeData.documents);
-        if (realtimeData.periods) setPeriods(realtimeData.periods);
-      }
-    });
+    const unsubs: (() => void)[] = [];
+
+    // Realtime listener cho sub_account
+    if (subId) {
+      const unsubSub = subscribeSubAccountData(subId, (realtimeData) => {
+        if (realtimeData && isHydrated && !isHydratingRef.current) {
+          if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
+          if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
+          if (realtimeData.subjects) setSubjects(realtimeData.subjects);
+          if (realtimeData.lessons) setLessons(realtimeData.lessons);
+          if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
+          if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
+          if (realtimeData.documents) setDocuments(realtimeData.documents);
+          if (realtimeData.periods) setPeriods(realtimeData.periods);
+        }
+      });
+      unsubs.push(unsubSub);
+    }
+
+    // Realtime listener cho Family Code (Đồng bộ tức thì mọi thay đổi qua mã gia đình)
+    if (famCode && childId) {
+      const unsubFam = subscribeChildDataByCode(famCode, childId, (realtimeData) => {
+        if (realtimeData && isHydrated && !isHydratingRef.current) {
+          if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
+          if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
+          if (realtimeData.subjects) setSubjects(realtimeData.subjects);
+          if (realtimeData.lessons) setLessons(realtimeData.lessons);
+          if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
+          if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
+          if (realtimeData.documents) setDocuments(realtimeData.documents);
+          if (realtimeData.periods) setPeriods(realtimeData.periods);
+        }
+      });
+      unsubs.push(unsubFam);
+    }
 
     return () => {
-      unsubscribe();
+      unsubs.forEach(fn => {
+        try { fn(); } catch {}
+      });
     };
-  }, [activeChildProfile?.subId, isHydrated]);
+  }, [activeChildProfile?.subId, activeChildProfile?.id, family?.familyCode, isHydrated]);
 
   const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);

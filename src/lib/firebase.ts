@@ -361,6 +361,31 @@ export const fetchChildDataByCodeFromCloud = async (familyCode: string, childId:
   }
 };
 
+/**
+ * Realtime Listener for child data by family code
+ */
+export const subscribeChildDataByCode = (
+  familyCode: string,
+  childId: string,
+  onData: (data: any) => void,
+  onError?: (err: any) => void
+): Unsubscribe => {
+  const cleanCode = familyCode.trim().toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const dataRef = doc(db, 'families_by_code', cleanCode, 'children_data', childId);
+  return onSnapshot(
+    dataRef,
+    (snap) => {
+      if (snap.exists()) {
+        onData(snap.data());
+      }
+    },
+    (err) => {
+      console.warn(`[Family Code Realtime Sync] Error for ${cleanCode}/${childId}:`, err);
+      if (onError) onError(err);
+    }
+  );
+};
+
 // =========================================================================
 // 🚀 ARCHITECTURE: SUB-ACCOUNT (CHA - CON) OFFLINE-FIRST & REALTIME SYNC
 // =========================================================================
