@@ -136,7 +136,7 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
                 </span>
               </h2>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Gửi 1 Link cố định + 1 Mật khẩu để Cha Mẹ đồng hành xem bài học
+                Cha Mẹ có thể dùng link cố định này HOẶC đăng nhập bằng chính Email của bạn + Mật khẩu
               </p>
             </div>
           </div>

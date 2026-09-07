@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
+import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, Loader2 } from 'lucide-react';
 
 interface LoginModalProps {
   onGoogleLogin: () => Promise<void>;
   isLoggingIn?: boolean;
+  onParentLogin: (studentEmail: string, passwordInput: string) => Promise<{ success: boolean; error?: string }>;
 }
 
 const SLIDES = [
@@ -29,8 +31,43 @@ const SLIDES = [
 export const LoginModal: React.FC<LoginModalProps> = ({
   onGoogleLogin,
   isLoggingIn = false,
+  onParentLogin,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
+  const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
+  
+  // Parent Form States
+  const [studentEmail, setStudentEmail] = useState('');
+  const [parentPassword, setParentPassword] = useState('');
+  const [isParentLoggingIn, setIsParentLoggingIn] = useState(false);
+  const [parentError, setParentError] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+
+  const handleParentSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!studentEmail.trim()) {
+      setParentError('Vui lòng nhập Email của học sinh!');
+      return;
+    }
+    if (!parentPassword.trim()) {
+      setParentError('Vui lòng nhập Mật khẩu xem bài!');
+      return;
+    }
+
+    setParentError('');
+    setIsParentLoggingIn(true);
+
+    try {
+      const res = await onParentLogin(studentEmail.trim(), parentPassword.trim());
+      if (!res.success) {
+        setParentError(res.error || 'Đăng nhập không thành công, vui lòng kiểm tra lại!');
+      }
+    } catch (err: any) {
+      setParentError(err.message || 'Có lỗi kết nối hệ thống. Vui lòng thử lại!');
+    } finally {
+      setIsParentLoggingIn(false);
+    }
+  };
 
   return (
     <div className="min-h-screen w-full flex flex-col md:flex-row bg-slate-900 font-sans text-slate-800 overflow-hidden select-none">
@@ -80,61 +117,177 @@ export const LoginModal: React.FC<LoginModalProps> = ({
 
       {/* -------------------- RIGHT COLUMN (42%): AUTH ACTION BOX -------------------- */}
       <div className="w-full md:w-[42%] min-h-full md:h-screen bg-white flex flex-col justify-center items-center p-6 sm:p-10 md:p-12 lg:p-16 z-20 overflow-y-auto relative">
-        <div className="w-full max-w-sm mx-auto space-y-8 my-auto animate-in fade-in duration-300">
+        <div className="w-full max-w-sm mx-auto space-y-6 my-auto animate-in fade-in duration-300">
           
           {/* Header Title */}
-          <div className="text-left space-y-4">
-            <div className="w-14 h-14 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-indigo-100 text-2xl font-bold">
+          <div className="text-left space-y-3">
+            <div className="w-12 h-12 rounded-2xl bg-gradient-to-br from-blue-600 to-indigo-700 text-white flex items-center justify-center shadow-md shadow-indigo-100 text-xl font-bold">
               📚
             </div>
             
-            <div className="space-y-2">
-              <h1 className="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">
+            <div className="space-y-1">
+              <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight">
                 Không Gian Học Tập
               </h1>
-              <p className="text-sm sm:text-base font-semibold text-indigo-700 leading-relaxed">
+              <p className="text-xs sm:text-sm font-semibold text-indigo-700">
                 Thời Khóa Biểu &amp; Thư Viện Học Tập
-              </p>
-              <p className="text-xs sm:text-sm text-slate-500 leading-relaxed">
-                Đăng nhập bằng Gmail học sinh để lưu trữ bài học, sơ đồ tư duy và đồng bộ dữ liệu an toàn.
               </p>
             </div>
           </div>
 
-          {/* Action Buttons */}
-          <div className="space-y-4 pt-2">
-            {/* Google Login */}
+          {/* Segmented Controller (Tab Switcher) */}
+          <div className="bg-slate-100 p-1 rounded-xl flex gap-1 border border-slate-200">
             <button
               type="button"
-              disabled={isLoggingIn}
-              onClick={onGoogleLogin}
-              className="w-full py-4 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-bold text-base shadow-lg shadow-indigo-200 hover:shadow-indigo-300 transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer group disabled:opacity-75"
+              onClick={() => {
+                setActiveTab('student');
+                setParentError('');
+              }}
+              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'student'
+                  ? 'bg-white text-indigo-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
             >
-              {isLoggingIn ? (
-                <div className="flex items-center gap-2">
-                  <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                  <span>Đang kết nối Google...</span>
-                </div>
-              ) : (
-                <>
-                  <div className="w-6 h-6 rounded-full bg-white flex items-center justify-center p-1 shrink-0 shadow-xs">
-                    <svg viewBox="0 0 24 24" className="w-4 h-4">
-                      <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
-                      <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
-                      <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
-                      <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
-                    </svg>
-                  </div>
-                  <span>Đăng nhập với Google (Gmail)</span>
-                </>
-              )}
+              <GraduationCap className="w-4 h-4" />
+              <span>Học Sinh</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setActiveTab('parent');
+                setParentError('');
+              }}
+              className={`flex-1 py-2.5 rounded-lg font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer ${
+                activeTab === 'parent'
+                  ? 'bg-white text-indigo-700 shadow-sm'
+                  : 'text-slate-500 hover:text-slate-800'
+              }`}
+            >
+              <Users className="w-4 h-4" />
+              <span>Phụ Huynh</span>
             </button>
           </div>
 
+          {/* Auth Tab Content */}
+          <div className="space-y-4 min-h-[220px] transition-all duration-300">
+            {activeTab === 'student' ? (
+              <div className="space-y-4 animate-in fade-in slide-in-from-left-4 duration-300">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Đăng nhập bằng tài khoản Gmail học sinh để tự thiết lập thời khóa biểu, làm sơ đồ tư duy, lưu trữ tài liệu học tập cá nhân. Dữ liệu sẽ tự động đồng bộ thời gian thực.
+                </p>
+
+                {/* Google Login Button */}
+                <button
+                  type="button"
+                  disabled={isLoggingIn}
+                  onClick={onGoogleLogin}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-blue-600 via-indigo-600 to-indigo-700 hover:from-blue-700 hover:to-indigo-800 text-white font-bold text-sm shadow-md shadow-indigo-100 hover:shadow-indigo-200 transition-all duration-200 flex items-center justify-center gap-3 cursor-pointer group disabled:opacity-75"
+                >
+                  {isLoggingIn ? (
+                    <div className="flex items-center gap-2">
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang kết nối Google...</span>
+                    </div>
+                  ) : (
+                    <>
+                      <div className="w-5 h-5 rounded-full bg-white flex items-center justify-center shrink-0">
+                        <svg viewBox="0 0 24 24" className="w-3.5 h-3.5">
+                          <path d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" fill="#4285F4" />
+                          <path d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" fill="#34A853" />
+                          <path d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.22.81-.62z" fill="#FBBC05" />
+                          <path d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" fill="#EA4335" />
+                        </svg>
+                      </div>
+                      <span>Đăng nhập Google (Học Sinh)</span>
+                    </>
+                  )}
+                </button>
+
+                <div className="pt-2 text-center">
+                  <p className="text-[10px] text-slate-400">
+                    Tài khoản Google là ID định danh học sinh duy nhất của bạn.
+                  </p>
+                </div>
+              </div>
+            ) : (
+              <form onSubmit={handleParentSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+                <p className="text-xs text-slate-500 leading-relaxed">
+                  Nhập chính xác <strong>Email Gmail của con</strong> và <strong>Mật khẩu xem bài</strong> (do con cấp hoặc mật khẩu mặc định <code>123456</code>) để đồng hành cùng tiến trình học tập của con.
+                </p>
+
+                {parentError && (
+                  <div className="p-3 bg-red-50 border border-red-200 text-red-600 rounded-xl text-xs font-semibold leading-relaxed animate-shake">
+                    ⚠️ {parentError}
+                  </div>
+                )}
+
+                {/* Email Input */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
+                    <Mail className="w-3.5 h-3.5 text-slate-400" />
+                    <span>Email của con:</span>
+                  </label>
+                  <input
+                    type="email"
+                    required
+                    value={studentEmail}
+                    onChange={(e) => setStudentEmail(e.target.value)}
+                    placeholder="concuaban@gmail.com"
+                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-hidden text-sm transition-all placeholder:text-slate-400"
+                  />
+                </div>
+
+                {/* Password Input */}
+                <div className="space-y-1">
+                  <label className="text-xs font-bold text-slate-600 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 text-slate-400" />
+                      <span>Mật khẩu xem bài:</span>
+                    </span>
+                  </label>
+                  <div className="relative">
+                    <input
+                      type={showPassword ? 'text' : 'password'}
+                      required
+                      value={parentPassword}
+                      onChange={(e) => setParentPassword(e.target.value)}
+                      placeholder="Mật khẩu của con (Mặc định: 123456)"
+                      className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-hidden text-sm transition-all placeholder:text-slate-400 font-mono"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword(!showPassword)}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
+                    >
+                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit button */}
+                <button
+                  type="submit"
+                  disabled={isParentLoggingIn}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm shadow-md shadow-emerald-100 hover:shadow-emerald-200 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
+                >
+                  {isParentLoggingIn ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <span>Đang kết nối không gian của con...</span>
+                    </>
+                  ) : (
+                    <span>Đăng Nhập Xem Tiến Độ</span>
+                  )}
+                </button>
+              </form>
+            )}
+          </div>
+
           {/* Footer note */}
-          <div className="pt-4 text-center">
-            <p className="text-[11px] text-slate-400">
-              Dành riêng cho học sinh • Tài khoản Google là ID duy nhất của bạn
+          <div className="pt-2 text-center border-t border-slate-100">
+            <p className="text-[10px] text-slate-400">
+              Công cụ hỗ trợ học tập trực quan &amp; Độc lập cho học sinh cấp 2.
             </p>
           </div>
 

@@ -51,7 +51,8 @@ import {
   getStudentProfileFromCloud,
   verifyAndFetchStudentWorkspace,
   subscribeStudentWorkspace,
-  fetchStudentWorkspaceFromCloud
+  fetchStudentWorkspaceFromCloud,
+  verifyAndFetchStudentByEmail
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
@@ -916,6 +917,7 @@ export default function App() {
             className: classInfo.className,
             avatar: activeChildProfile?.avatar || '👦',
             viewerPassword,
+            studentEmail: currentUser?.email || '',
           }));
         }
 
@@ -1068,6 +1070,7 @@ export default function App() {
       className: classInfo.className,
       avatar: activeChildProfile?.avatar || '👦',
       viewerPassword: newPassword,
+      studentEmail: currentUser?.email || '',
     });
     return success;
   };
@@ -1092,6 +1095,7 @@ export default function App() {
           className: classInfo.className,
           avatar: activeChildProfile?.avatar || '👦',
           viewerPassword,
+          studentEmail: currentUser?.email || '',
         }),
         saveStudentWorkspaceToCloud(studentId, payload)
       ]);
@@ -1316,6 +1320,33 @@ export default function App() {
       alert('Đăng nhập Google không thành công: ' + (err?.message || 'Vui lòng thử lại sau!'));
     } finally {
       setIsGoogleLoggingIn(false);
+    }
+  };
+
+  const handleParentEmailLogin = async (
+    studentEmail: string,
+    passwordInput: string
+  ): Promise<{ success: boolean; error?: string }> => {
+    try {
+      const res = await verifyAndFetchStudentByEmail(studentEmail, passwordInput);
+      if (res.success && res.studentId) {
+        sessionStorage.setItem(`parent_viewer_pwd_${res.studentId}`, passwordInput);
+        setViewerStudentId(res.studentId);
+        
+        const url = new URL(window.location.href);
+        url.searchParams.set('student', res.studentId);
+        window.history.replaceState({}, '', url.toString());
+
+        handleParentViewerSuccess(res.appState, res.profile);
+        try {
+          confetti();
+        } catch {}
+        return { success: true };
+      }
+      return { success: false, error: res.error || 'Đăng nhập xem bài không thành công.' };
+    } catch (err: any) {
+      console.error('Error in parent email login:', err);
+      return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
     }
   };
 
@@ -2481,6 +2512,7 @@ export default function App() {
       <LoginModal
         onGoogleLogin={handleGoogleLogin}
         isLoggingIn={isGoogleLoggingIn}
+        onParentLogin={handleParentEmailLogin}
       />
     );
   }

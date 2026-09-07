@@ -601,6 +601,7 @@ export const syncStudentProfileToCloud = async (account: {
   className?: string;
   avatar?: string;
   viewerPassword?: string;
+  studentEmail?: string;
 }): Promise<boolean> => {
   try {
     if (!account.studentId) return false;
@@ -614,6 +615,7 @@ export const syncStudentProfileToCloud = async (account: {
       className: account.className || '',
       avatar: account.avatar || '👦',
       viewerPassword: (account.viewerPassword || '123456').trim(),
+      studentEmail: account.studentEmail ? account.studentEmail.trim().toLowerCase() : '',
       updatedAt: serverTimestamp(),
     });
 
@@ -740,6 +742,56 @@ export const verifyAndFetchStudentWorkspace = async (
     };
   } catch (err: any) {
     console.error('Error verifying and fetching student workspace:', err);
+    return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
+  }
+};
+
+/**
+ * Phụ huynh đăng nhập bằng Email của con và Mật khẩu xem bài
+ */
+export const verifyAndFetchStudentByEmail = async (
+  studentEmail: string,
+  inputPassword: string
+): Promise<{ success: boolean; studentId?: string; profile?: any; appState?: any; error?: string }> => {
+  try {
+    if (!studentEmail) {
+      return { success: false, error: 'Email của học sinh không được để trống!' };
+    }
+    const cleanEmail = studentEmail.trim().toLowerCase();
+
+    // Tìm kiếm học sinh có studentEmail khớp trong collection 'students'
+    const q = query(collection(db, 'students'), where('studentEmail', '==', cleanEmail));
+    const snap = await getDocs(q);
+
+    if (snap.empty) {
+      return { success: false, error: 'Không tìm thấy không gian học tập nào liên kết với Email này của học sinh!' };
+    }
+
+    // Lấy tài liệu đầu tiên tìm được
+    const docSnap = snap.docs[0];
+    const profile = docSnap.data();
+    const studentId = docSnap.id;
+
+    const correctPassword = (profile.viewerPassword || '123456').trim();
+    const cleanInput = (inputPassword || '').trim();
+
+    if (correctPassword !== cleanInput) {
+      return { success: false, error: 'Mật khẩu xem bài không chính xác! Vui lòng hỏi lại con.' };
+    }
+
+    // Tải dữ liệu appState tương ứng
+    const dataRef = doc(db, 'students', studentId, 'data', 'appState');
+    const dataSnap = await getDoc(dataRef);
+    const appState = dataSnap.exists() ? dataSnap.data() : null;
+
+    return {
+      success: true,
+      studentId,
+      profile,
+      appState
+    };
+  } catch (err: any) {
+    console.error('Error in verifyAndFetchStudentByEmail:', err);
     return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
   }
 };
