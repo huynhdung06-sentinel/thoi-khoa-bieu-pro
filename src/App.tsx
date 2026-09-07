@@ -50,7 +50,8 @@ import {
   saveStudentWorkspaceToCloud,
   getStudentProfileFromCloud,
   verifyAndFetchStudentWorkspace,
-  subscribeStudentWorkspace
+  subscribeStudentWorkspace,
+  fetchStudentWorkspaceFromCloud
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
@@ -654,6 +655,9 @@ export default function App() {
             if (!firebaseData && family.familyCode) {
               firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id, { timeoutMs: 8000 });
             }
+            if (!firebaseData && studentId && currentRole === 'student') {
+              firebaseData = await fetchStudentWorkspaceFromCloud(studentId, { timeoutMs: 8000 });
+            }
             return firebaseData;
           })()
         ]);
@@ -796,32 +800,14 @@ export default function App() {
 
     hydrateChildData();
     return () => { isMounted = false; };
-  }, [activeChildProfile?.id, effectiveUserId, family.familyCode, currentRole, transferUpdateTrigger]);
+  }, [activeChildProfile?.id, effectiveUserId, family.familyCode, currentRole, transferUpdateTrigger, studentId]);
 
-  // 2-Way Realtime Stream Listener for Sub-Accounts & Family Code (Multi-device live sync via onSnapshot)
+  // 2-Way Realtime Stream Listener for Family Code (Multi-device live sync via onSnapshot)
   useEffect(() => {
-    const subId = activeChildProfile?.subId;
     const famCode = family?.familyCode;
     const childId = activeChildProfile?.id;
 
     const unsubs: (() => void)[] = [];
-
-    // Realtime listener cho sub_account
-    if (subId) {
-      const unsubSub = subscribeSubAccountData(subId, (realtimeData) => {
-        if (realtimeData && isHydrated && !isHydratingRef.current) {
-          if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
-          if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
-          if (realtimeData.subjects) setSubjects(realtimeData.subjects);
-          if (realtimeData.lessons) setLessons(realtimeData.lessons);
-          if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
-          if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
-          if (realtimeData.documents) setDocuments(realtimeData.documents);
-          if (realtimeData.periods) setPeriods(realtimeData.periods);
-        }
-      });
-      unsubs.push(unsubSub);
-    }
 
     // Realtime listener cho Family Code (Đồng bộ tức thì mọi thay đổi qua mã gia đình)
     if (famCode && childId) {
@@ -845,25 +831,62 @@ export default function App() {
         try { fn(); } catch {}
       });
     };
-  }, [activeChildProfile?.subId, activeChildProfile?.id, family?.familyCode, isHydrated]);
+  }, [activeChildProfile?.id, family?.familyCode, isHydrated]);
 
   const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
   const isCloudSaveInFlightRef = useRef(false);
+  const hasPendingChangesRef = useRef(false);
 
-  // Child-specific Save Effects to Firebase & Cloud by Family Code & SubAccount Realtime
+  // Local-first & Optimistic UI Queue (Google Docs/Notion style sync)
   useEffect(() => {
     if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
     if (loadedChildIdRef.current !== activeChildProfile.id) return;
-    // CRITICAL (Module 4B): Parent role is strictly READ-ONLY. Never auto-save canonical learning data when currentRole === 'admin'.
     if (currentRole === 'admin') return;
-    
+
+    // 1. TỐC ĐỘ ÁNH SÁNG (0ms trễ): Lưu tức thì vào IndexedDB cục bộ của máy
+    const payload = {
+      classInfo,
+      subjects,
+      timetableSlots,
+      lessons,
+      lessonPlans,
+      studyRecords,
+      documents,
+      periods
+    };
+
+    try {
+      Promise.all([
+        saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, classInfo),
+        saveLocalAppData(APP_DATA_KEYS.SUBJECTS, subjects),
+        saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
+        saveLocalAppData(APP_DATA_KEYS.PERIODS, periods),
+        saveLocalAppData(APP_DATA_KEYS.LESSONS, lessons),
+        saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
+        saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
+        saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, documents),
+      ]).catch(localSaveErr => {
+        console.error('Local IndexedDB immediate auto-save error:', localSaveErr);
+      });
+    } catch (err) {
+      console.error('Local IndexedDB synchronous error:', err);
+    }
+
+    // 2. HÀNG ĐỢI LƯU NGẦM CLOUD (Optimistic Background Sync - Debounce 1000ms)
     setIsCloudAutoSaving(true);
-    // Debounce timer (2500ms) to bundle edits cleanly and prevent exceeding Firestore maximum write stream limits
-    const timer = setTimeout(async () => {
-      if (isCloudSaveInFlightRef.current) return;
+    
+    const triggerCloudSave = async () => {
+      if (isCloudSaveInFlightRef.current) {
+        // Đánh dấu "đang có thay đổi mới chưa gửi"
+        hasPendingChangesRef.current = true;
+        return;
+      }
+
       isCloudSaveInFlightRef.current = true;
-      const payload = {
+      hasPendingChangesRef.current = false;
+
+      const currentPayload = {
         classInfo,
         subjects,
         timetableSlots,
@@ -875,36 +898,17 @@ export default function App() {
       };
 
       try {
-        // Save full canonical dataset to IndexedDB app_data (8 entities) - Student only
-        try {
-          await Promise.all([
-            saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, classInfo),
-            saveLocalAppData(APP_DATA_KEYS.SUBJECTS, subjects),
-            saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
-            saveLocalAppData(APP_DATA_KEYS.PERIODS, periods),
-            saveLocalAppData(APP_DATA_KEYS.LESSONS, lessons),
-            saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
-            saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
-            saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, documents),
-          ]);
-        } catch (localSaveErr) {
-          console.error('Local IndexedDB auto-save error:', localSaveErr);
-        }
-
         const promises: Promise<any>[] = [];
         if (currentRole !== 'admin' && !isViewerMode) {
           if (effectiveUserId) {
-            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, payload));
+            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, currentPayload));
           }
           if (family.familyCode) {
-            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, payload));
-          }
-          if (activeChildProfile.subId) {
-            promises.push(saveSubAccountData(activeChildProfile.subId, payload));
+            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, currentPayload));
           }
 
-          // 🎓 Student Admin Cloud Workspace Sync (1 Link + 1 Password)
-          promises.push(saveStudentWorkspaceToCloud(studentId, payload));
+          // 🎓 Đồng bộ không gian học sinh cá nhân (1 Link + 1 Password)
+          promises.push(saveStudentWorkspaceToCloud(studentId, currentPayload));
           promises.push(syncStudentProfileToCloud({
             studentId,
             studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
@@ -914,18 +918,45 @@ export default function App() {
             viewerPassword,
           }));
         }
+
         await Promise.all(promises);
         setLastCloudSyncSuccess(new Date());
       } catch (err) {
-        console.error('Cloud auto-save error:', err);
+        console.error('Cloud background sync error:', err);
       } finally {
         isCloudSaveInFlightRef.current = false;
         setIsCloudAutoSaving(false);
+
+        // Nếu trong lúc lưu Cloud mà học sinh vẫn gõ chữ tiếp -> lập tức lưu lượt tiếp theo!
+        if (hasPendingChangesRef.current) {
+          triggerCloudSave();
+        }
       }
-    }, 2500);
-    
+    };
+
+    const timer = setTimeout(() => {
+      triggerCloudSave();
+    }, 1000); // 1 giây debounce cực mượt theo chuẩn Google Docs
+
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode, currentRole, isViewerMode, studentId, viewerPassword]);
+  }, [
+    classInfo,
+    subjects,
+    timetableSlots,
+    lessons,
+    lessonPlans,
+    studyRecords,
+    documents,
+    periods,
+    activeChildProfile?.id,
+    isHydrated,
+    effectiveUserId,
+    family.familyCode,
+    currentRole,
+    isViewerMode,
+    studentId,
+    viewerPassword
+  ]);
 
   // -------------------------------------------------------------------------
   // 👨‍👩‍👧 PARENT VIEWER MODE & REALTIME LISTENER

@@ -549,99 +549,42 @@ export const signInAnonymouslyUser = async () => {
 };
 
 /**
- * Background creation of sub_accounts doc (runs non-blocking 0ms)
+ * Background creation of sub_accounts doc (deprecated - no-op)
  */
-export const initSubAccountDoc = async (data: {
+export const initSubAccountDoc = async (_data: {
   parentId: string;
   subId: string;
   childProfile: Partial<ChildProfile>;
   initialAppState?: any;
 }) => {
-  try {
-    const subRef = doc(db, 'sub_accounts', data.subId);
-    const payload = removeUndefined({
-      subId: data.subId,
-      parentId: data.parentId,
-      role: 'sub_account',
-      childProfile: data.childProfile,
-      status: 'active',
-      createdAt: serverTimestamp(),
-      updatedAt: serverTimestamp(),
-    });
-    await setDoc(subRef, payload, { merge: true });
-
-    if (data.initialAppState) {
-      const dataRef = doc(db, 'sub_accounts', data.subId, 'data', 'current');
-      const cleanState = removeUndefined(data.initialAppState);
-      await setDoc(dataRef, {
-        ...cleanState,
-        updatedAt: serverTimestamp(),
-      }, { merge: true });
-    }
-  } catch (err) {
-    console.error('Background initSubAccountDoc error:', err);
-  }
+  // Deprecated: Migrated to Student Workspace (students collection)
+  return;
 };
 
 /**
- * 2-way Realtime Stream: Subscribe to sub_accounts/{subId}/data/current via onSnapshot
+ * 2-way Realtime Stream: Subscribe to sub_accounts/{subId}/data/current (deprecated - no-op)
  */
 export const subscribeSubAccountData = (
-  subId: string, 
-  onData: (data: any) => void,
-  onError?: (err: any) => void
+  _subId: string, 
+  _onData: (data: any) => void,
+  _onError?: (err: any) => void
 ): Unsubscribe => {
-  const dataRef = doc(db, 'sub_accounts', subId, 'data', 'current');
-  return onSnapshot(
-    dataRef, 
-    (snap) => {
-      if (snap.exists()) {
-        onData(snap.data());
-      } else {
-        onData(null);
-      }
-    },
-    (err) => {
-      console.warn(`[Realtime Sync] Snapshot error for ${subId}:`, err);
-      if (onError) onError(err);
-    }
-  );
+  return () => {};
 };
 
 /**
- * Save state directly to sub_accounts/{subId}/data/current
+ * Save state directly to sub_accounts/{subId}/data/current (deprecated - no-op)
  */
-export const saveSubAccountData = async (subId: string, appState: any): Promise<boolean> => {
-  try {
-    if (!subId) return false;
-    const cleanState = removeUndefined(appState);
-    const dataRef = doc(db, 'sub_accounts', subId, 'data', 'current');
-    await setDoc(dataRef, {
-      ...cleanState,
-      updatedAt: serverTimestamp(),
-    }, { merge: true });
-    return true;
-  } catch (err) {
-    console.error('Error saving sub account data:', err);
-    return false;
-  }
+export const saveSubAccountData = async (_subId: string, _appState: any): Promise<boolean> => {
+  // Deprecated: Migrated to Student Workspace (students collection)
+  return true;
 };
 
 /**
- * Fetch sub_accounts document definition
+ * Fetch sub_accounts document definition (deprecated - returns null)
  */
-export const fetchSubAccountDoc = async (subId: string): Promise<any | null> => {
-  try {
-    const subRef = doc(db, 'sub_accounts', subId);
-    const snap = await getDoc(subRef);
-    if (snap.exists()) {
-      return snap.data();
-    }
-    return null;
-  } catch (err) {
-    console.error('Error fetching sub account doc:', err);
-    return null;
-  }
+export const fetchSubAccountDoc = async (_subId: string): Promise<any | null> => {
+  return null;
 };
 
 // =========================================================================
@@ -718,6 +661,40 @@ export const getStudentProfileFromCloud = async (studentId: string): Promise<any
     return null;
   } catch (err) {
     console.error('Error getting student profile from cloud:', err);
+    return null;
+  }
+};
+
+/**
+ * Tải toàn bộ dữ liệu học tập của học sinh từ Cloud (dùng để khôi phục khi F5)
+ */
+export const fetchStudentWorkspaceFromCloud = async (
+  studentId: string,
+  options?: { timeoutMs?: number }
+): Promise<any | null> => {
+  try {
+    if (!studentId) return null;
+    const cleanId = studentId.trim();
+    const dataRef = doc(db, 'students', cleanId, 'data', 'appState');
+    const timeoutMs = options?.timeoutMs || 8000;
+
+    const snap = await Promise.race([
+      getDoc(dataRef),
+      new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new DOMException('Timeout', 'AbortError')), timeoutMs)
+      )
+    ]);
+
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (err: any) {
+    if (err?.name === 'AbortError') {
+      console.warn('[Cloud Sync] fetchStudentWorkspaceFromCloud timeout - fallback to local');
+    } else {
+      console.error('Error fetching student workspace from cloud:', err);
+    }
     return null;
   }
 };
