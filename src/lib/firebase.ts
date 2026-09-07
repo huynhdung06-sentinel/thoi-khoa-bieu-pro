@@ -26,8 +26,9 @@ import firebaseConfig from '../../firebase-applet-config.json';
 import { FamilyAccount, ChildProfile, SubAccountToken } from '../types';
 
 const app = initializeApp(firebaseConfig);
-export const db = firebaseConfig.firestoreDatabaseId && firebaseConfig.firestoreDatabaseId !== '(default)'
-  ? getFirestore(app, firebaseConfig.firestoreDatabaseId)
+const config = firebaseConfig as any;
+export const db = config.firestoreDatabaseId && config.firestoreDatabaseId !== '(default)'
+  ? getFirestore(app, config.firestoreDatabaseId)
   : getFirestore(app);
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
@@ -510,5 +511,153 @@ export const fetchSubAccountDoc = async (subId: string): Promise<any | null> => 
     return null;
   }
 };
+
+// =========================================================================
+// 🎓 STUDENT ADMIN & PARENT VIEWER (1 Link + 1 Password)
+// =========================================================================
+
+/**
+ * Khởi tạo hoặc cập nhật hồ sơ Học Sinh làm Admin trên Cloud Firestore
+ */
+export const syncStudentProfileToCloud = async (account: {
+  studentId: string;
+  studentName: string;
+  grade?: string;
+  className?: string;
+  avatar?: string;
+  viewerPassword?: string;
+}): Promise<boolean> => {
+  try {
+    if (!account.studentId) return false;
+    const cleanId = account.studentId.trim();
+    const studentRef = doc(db, 'students', cleanId);
+    
+    const payload = removeUndefined({
+      studentId: cleanId,
+      studentName: account.studentName || 'Học Sinh',
+      grade: account.grade || '',
+      className: account.className || '',
+      avatar: account.avatar || '👦',
+      viewerPassword: (account.viewerPassword || '123456').trim(),
+      updatedAt: serverTimestamp(),
+    });
+
+    await setDoc(studentRef, payload, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error syncing student profile to cloud:', err);
+    return false;
+  }
+};
+
+/**
+ * Học sinh lưu toàn bộ dữ liệu học tập lên máy chủ Cloud Firestore
+ */
+export const saveStudentWorkspaceToCloud = async (studentId: string, appState: any): Promise<boolean> => {
+  try {
+    if (!studentId) return false;
+    const cleanId = studentId.trim();
+    const dataRef = doc(db, 'students', cleanId, 'data', 'appState');
+    const cleanState = removeUndefined(appState);
+
+    await setDoc(dataRef, {
+      ...cleanState,
+      updatedAt: serverTimestamp(),
+    }, { merge: true });
+    return true;
+  } catch (err) {
+    console.error('Error saving student workspace to cloud:', err);
+    return false;
+  }
+};
+
+/**
+ * Lấy thông tin hồ sơ học sinh từ Cloud
+ */
+export const getStudentProfileFromCloud = async (studentId: string): Promise<any | null> => {
+  try {
+    if (!studentId) return null;
+    const cleanId = studentId.trim();
+    const studentRef = doc(db, 'students', cleanId);
+    const snap = await getDoc(studentRef);
+    if (snap.exists()) {
+      return snap.data();
+    }
+    return null;
+  } catch (err) {
+    console.error('Error getting student profile from cloud:', err);
+    return null;
+  }
+};
+
+/**
+ * Phụ huynh mở link: Xác thực mật khẩu và tải dữ liệu học tập của con về máy
+ */
+export const verifyAndFetchStudentWorkspace = async (
+  studentId: string, 
+  inputPassword: string
+): Promise<{ success: boolean; profile?: any; appState?: any; error?: string }> => {
+  try {
+    if (!studentId) {
+      return { success: false, error: 'Mã học sinh không hợp lệ!' };
+    }
+
+    const cleanId = studentId.trim();
+    const studentRef = doc(db, 'students', cleanId);
+    const snap = await getDoc(studentRef);
+
+    if (!snap.exists()) {
+      return { success: false, error: 'Không tìm thấy không gian học tập của học sinh này trên hệ thống!' };
+    }
+
+    const profile = snap.data();
+    const correctPassword = (profile.viewerPassword || '123456').trim();
+    const cleanInput = (inputPassword || '').trim();
+
+    // So sánh mật khẩu
+    if (correctPassword !== cleanInput) {
+      return { success: false, error: 'Mật khẩu xem bài không chính xác! Vui lòng hỏi lại con.' };
+    }
+
+    // Tải dữ liệu appState
+    const dataRef = doc(db, 'students', cleanId, 'data', 'appState');
+    const dataSnap = await getDoc(dataRef);
+    const appState = dataSnap.exists() ? dataSnap.data() : null;
+
+    return {
+      success: true,
+      profile,
+      appState
+    };
+  } catch (err: any) {
+    console.error('Error verifying and fetching student workspace:', err);
+    return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
+  }
+};
+
+/**
+ * Lắng nghe cập nhật bài học thời gian thực (Realtime stream cho Phụ huynh)
+ */
+export const subscribeStudentWorkspace = (
+  studentId: string,
+  onData: (data: any) => void,
+  onError?: (err: any) => void
+): Unsubscribe => {
+  const cleanId = studentId.trim();
+  const dataRef = doc(db, 'students', cleanId, 'data', 'appState');
+  return onSnapshot(
+    dataRef,
+    (snap) => {
+      if (snap.exists()) {
+        onData(snap.data());
+      }
+    },
+    (err) => {
+      console.warn(`[Student Workspace Realtime] Error for ${studentId}:`, err);
+      if (onError) onError(err);
+    }
+  );
+};
+
 
 

@@ -23,7 +23,8 @@ import {
   ShieldCheck,
   Cloud,
   Check,
-  X
+  X,
+  RefreshCw
 } from 'lucide-react';
 import { motion } from 'motion/react';
 
@@ -57,6 +58,7 @@ interface HeaderTimetableProps {
   isVictory?: boolean;
   isCapturing?: boolean;
   onOpenAboutStory?: () => void;
+  onOpenIntro?: () => void;
   family: FamilyAccount;
   activeChildProfile: ChildProfile | null;
   onSelectChild: (child: ChildProfile) => void;
@@ -79,6 +81,11 @@ interface HeaderTimetableProps {
   isCloudSyncing?: boolean;
   isCloudAutoSaving?: boolean;
   lastCloudSyncSuccess?: Date | null;
+  onOpenStudentShare?: () => void;
+  isViewerMode?: boolean;
+  viewerStudentName?: string;
+  onExitViewerMode?: () => void;
+  onRefreshViewerData?: () => void;
 }
 
 export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
@@ -105,6 +112,7 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   isVictory,
   isCapturing,
   onOpenAboutStory,
+  onOpenIntro,
   family,
   activeChildProfile,
   onSelectChild,
@@ -124,6 +132,11 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   isCloudSyncing = false,
   isCloudAutoSaving = false,
   lastCloudSyncSuccess = null,
+  onOpenStudentShare,
+  isViewerMode = false,
+  viewerStudentName,
+  onExitViewerMode,
+  onRefreshViewerData,
 }) => {
   const fileInputRef = React.useRef<HTMLInputElement>(null);
   const [isProfileMenuOpen, setIsProfileMenuOpen] = useState(false);
@@ -184,11 +197,20 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
           )}
 
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-lg bg-blue-700 text-white flex items-center justify-center font-black text-xs shadow-md shrink-0">
+            <button
+              type="button"
+              onClick={onOpenIntro}
+              className="w-10 h-10 rounded-lg bg-blue-700 hover:bg-blue-800 text-white flex items-center justify-center font-black text-xs shadow-md shrink-0 transition-transform active:scale-95 cursor-pointer"
+              title="Bấm để xem lại Trang giới thiệu (Intro)"
+            >
               TKB
-            </div>
+            </button>
             <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 sm:gap-2.5">
-              <span className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-tight block">
+              <span 
+                onClick={onOpenIntro}
+                className="font-extrabold text-xs sm:text-sm text-slate-900 dark:text-white uppercase tracking-tight block cursor-pointer hover:text-blue-600 dark:hover:text-blue-400 transition-colors"
+                title="Bấm để xem lại Trang giới thiệu (Intro)"
+              >
                 Thời Khóa Biểu &amp; Chương Trình Học
               </span>
               
@@ -386,121 +408,60 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             </button>
           )}
 
-          {/* Cloud Auto & Manual Sync Indicator / Button */}
-          {onManualSync && family.familyCode && (
-            <button
-              type="button"
-              onClick={async () => {
-                const res = await onManualSync();
-                if (res !== false) {
-                  setSyncSuccessBadge(true);
-                  setTimeout(() => setSyncSuccessBadge(false), 3000);
-                }
-              }}
-              disabled={isCloudSyncing || isCloudAutoSaving}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0 ${
-                isCloudSyncing || isCloudAutoSaving
-                  ? 'bg-amber-50 text-amber-900 border border-amber-300 dark:bg-amber-950/40 dark:text-amber-200 dark:border-amber-800'
-                  : syncSuccessBadge
-                  ? 'bg-emerald-600 text-white border border-emerald-700'
-                  : 'bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-sky-800'
-              }`}
-              title="Dữ liệu được tự động lưu ngầm. Bạn cũng có thể bấm vào đây để ép lưu ngay lập tức lên Firebase!"
-            >
-              {isCloudSyncing || isCloudAutoSaving ? (
-                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600 dark:text-amber-400" />
-              ) : syncSuccessBadge ? (
-                <Check className="w-3.5 h-3.5 text-white" />
-              ) : (
-                <Cloud className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-              )}
-              <span className="hidden sm:inline">
-                {isCloudSyncing || isCloudAutoSaving ? 'Đang tự lưu ngầm...' : syncSuccessBadge ? 'Đã lưu xong!' : 'Đã lưu đám mây'}
-              </span>
-            </button>
-          )}
-
-          {/* PARENT ROLE: Unified 'Tài Khoản' Button + 50% Screen Lightbox */}
-          {currentRole === 'admin' && (
-            <div className="relative">
-              <button
-                type="button"
-                onClick={() => {
-                  setProfileModalTab('overview');
-                  setIsProfileMenuOpen(true);
-                }}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-blue-50 hover:bg-blue-100/80 text-blue-800 border border-blue-200 text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-                title="Quản lý Tài Khoản Gia Đình"
-              >
-                <span className="text-sm select-none">👤</span>
-                <span>Tài Khoản</span>
-                <ChevronDown className={`w-3.5 h-3.5 text-blue-500 transition-transform duration-200 ${isProfileMenuOpen ? 'rotate-180' : ''}`} />
-              </button>
-            </div>
-          )}
-
-          {/* Unified Family Modal rendered for Header */}
-          <UnifiedFamilyModal
-            isOpen={isProfileMenuOpen}
-            onClose={() => setIsProfileMenuOpen(false)}
-            defaultTab={profileModalTab}
-            family={family}
-            onUpdateFamily={onUpdateFamily || (() => {})}
-            onAddChild={onAddChild}
-            onEditChild={onEditChild}
-            onDeleteChild={onDeleteChild}
-            currentRole={currentRole}
-            activeChildProfile={activeChildProfile}
-            onSelectChild={(child) => {
-              setIsProfileMenuOpen(false);
-              onSelectChild(child);
-            }}
-            onSelectParent={() => {
-              setIsProfileMenuOpen(false);
-              onSelectParent();
-            }}
-            onExportData={() => {
-              setIsProfileMenuOpen(false);
-              onExportData?.();
-            }}
-            onImportData={(e) => {
-              setIsProfileMenuOpen(false);
-              onImportData?.(e);
-            }}
-            onSwitchProfile={() => {
-              setIsProfileMenuOpen(false);
-              onSwitchProfile?.();
-            }}
-            onLogout={() => {
-              setIsProfileMenuOpen(false);
-              setShowLogoutConfirm(true);
-            }}
-            backupStatus={backupStatus}
-            isGuestMode={isGuestMode}
-            onOpenCloudSync={onOpenCloudSync}
-          />
-
-          {/* STUDENT ROLE: Zero Settings. Simply displays Child Name Badge & subtle PIN button to return to Parent */}
-          {currentRole !== 'admin' && (
+          {/* VIEWER MODE (Cha Mẹ mở link xem bài của con) */}
+          {isViewerMode ? (
             <div className="flex items-center gap-2">
-              {/* Active Child Profile Name Display (Read-Only) */}
-              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs font-extrabold text-emerald-800 dark:text-emerald-300 shrink-0">
-                <span className="text-sm select-none">{activeChildProfile?.avatar || '👦'}</span>
-                <span>{activeChildProfile?.name || classInfo.studentName}</span>
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-amber-50 dark:bg-amber-950/40 border border-amber-300 dark:border-amber-700 text-xs font-black text-amber-900 dark:text-amber-200 shadow-xs">
+                <span>👨‍👩‍👧</span>
+                <span>Đang xem bài của {viewerStudentName || classInfo.studentName} (Chỉ Xem)</span>
               </div>
 
-              {/* Pin Switch back to Parent (Requires Family PIN Challenge) */}
-              <button
-                type="button"
-                onClick={onSelectParent}
-                className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-                title="Quay lại góc quản lý của Phụ Huynh (Cần nhập mã PIN)"
-              >
-                <span>🔑</span>
-                <span>Góc Phụ Huynh</span>
-              </button>
+              {onRefreshViewerData && (
+                <button
+                  type="button"
+                  onClick={onRefreshViewerData}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-sky-50 hover:bg-sky-100 text-sky-800 border border-sky-300 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Tải bài học và điểm số mới nhất từ con"
+                >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  <span className="hidden sm:inline">Làm mới</span>
+                </button>
+              )}
+
+              {onExitViewerMode && (
+                <button
+                  type="button"
+                  onClick={onExitViewerMode}
+                  className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-300 dark:border-slate-700 text-xs font-bold transition-all shadow-xs cursor-pointer active:scale-95"
+                  title="Thoát chế độ xem của phụ huynh"
+                >
+                  <span>Thoát</span>
+                </button>
+              )}
             </div>
+          ) : (
+            <>
+              {/* STUDENT / ADMIN MODE: Button Chia Sẻ Cha Mẹ */}
+              {onOpenStudentShare && (
+                <button
+                  type="button"
+                  onClick={onOpenStudentShare}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
+                  title="Lấy 1 Link + Mật khẩu cố định để Cha Mẹ đồng hành xem bài học"
+                >
+                  <Share2 className="w-3.5 h-3.5" />
+                  <span>Chia Sẻ Cha Mẹ 🔗</span>
+                </button>
+              )}
+
+              {/* Student Profile Badge */}
+              <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 text-xs font-extrabold text-emerald-800 dark:text-emerald-300 shrink-0">
+                <span className="text-sm select-none">{activeChildProfile?.avatar || currentChildAvatar || '👦'}</span>
+                <span>{classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}</span>
+              </div>
+            </>
           )}
+
 
           {onOpenAboutStory && (
             <button

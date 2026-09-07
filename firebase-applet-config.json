@@ -1,10 +1,11 @@
 {
-  "projectId": "thoikhoabieupro",
-  "appId": "1:969500854260:web:cb154d5d7088ecb85f5ba1",
-  "apiKey": "AIzaSyBRhqa7R2rPOxSF1Mfif_l5tIWR2QXQqwA",
-  "authDomain": "thoikhoabieupro.firebaseapp.com",
-  "firestoreDatabaseId": "(default)",
-  "storageBucket": "thoikhoabieupro.firebasestorage.app",
-  "messagingSenderId": "969500854260",
-  "measurementId": "G-WXY6VJHSC3"
+  "projectId": "gen-lang-client-0307700612",
+  "appId": "1:777937989451:web:f8e6ec13e51c7782d0c2ce",
+  "apiKey": "AIzaSyCK89avbFa3A_Mnv9-eywM0CXnCyCs8054",
+  "authDomain": "gen-lang-client-0307700612.firebaseapp.com",
+  "storageBucket": "gen-lang-client-0307700612.firebasestorage.app",
+  "messagingSenderId": "777937989451",
+  "measurementId": "",
+  "oAuthClientId": "777937989451-6jj55vc76hqauu6mkt6lr75pt5qvjltl.apps.googleusercontent.com",
+  "recaptchaSiteKey": ""
 }

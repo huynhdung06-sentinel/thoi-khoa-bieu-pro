@@ -44,11 +44,18 @@ import {
   decodeSubAccountToken,
   subscribeSubAccountData,
   saveSubAccountData,
-  fetchSubAccountDoc
+  fetchSubAccountDoc,
+  syncStudentProfileToCloud,
+  saveStudentWorkspaceToCloud,
+  getStudentProfileFromCloud,
+  verifyAndFetchStudentWorkspace,
+  subscribeStudentWorkspace
 } from './lib/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
 import { ShareModal } from './components/ShareModal';
+import { StudentShareModal } from './components/StudentShareModal';
+import { ParentViewerLoginModal } from './components/ParentViewerLoginModal';
 import html2canvas from 'html2canvas';
 import { toPng, toJpeg } from 'html-to-image';
 import { HeaderTimetable } from './components/HeaderTimetable';
@@ -282,11 +289,44 @@ export default function App() {
     }
   }, [activeChildProfile?.id]);
 
+  // 🎓 STUDENT ADMIN & PARENT VIEWER STATE
+  const [studentId, setStudentId] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(`${STORAGE_KEY_PREFIX}student_cloud_id`);
+      if (saved && saved.trim()) return saved.trim();
+      const newId = 'HS_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}student_cloud_id`, newId);
+      return newId;
+    } catch {
+      return 'HS_' + Math.random().toString(36).substring(2, 8).toUpperCase();
+    }
+  });
+
+  const [viewerPassword, setViewerPassword] = useState<string>(() => {
+    try {
+      return localStorage.getItem(`${STORAGE_KEY_PREFIX}viewer_password`) || '123456';
+    } catch {
+      return '123456';
+    }
+  });
+
+  const [showStudentShareModal, setShowStudentShareModal] = useState(false);
+  const [isViewerMode, setIsViewerMode] = useState(false);
+  const [viewerStudentProfile, setViewerStudentProfile] = useState<any>(null);
+  const [showParentViewerModal, setShowParentViewerModal] = useState(false);
+  const [viewerStudentId, setViewerStudentId] = useState<string | null>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      return params.get('student') || null;
+    }
+    return null;
+  });
+
   // Màn hình Intro: Nếu máy con đã được ghi nhớ hoặc đã đăng nhập -> vào thẳng! Nếu chưa -> mở màn hình chọn hồ sơ / đăng nhập
   const [isIntroOpen, setIsIntroOpen] = useState<boolean>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
-      if (urlParams.get('token') || (urlParams.get('family') && urlParams.get('child'))) {
+      if (urlParams.get('student') || urlParams.get('token') || (urlParams.get('family') && urlParams.get('child'))) {
         return false;
       }
       const introDismissed = localStorage.getItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
@@ -301,6 +341,7 @@ export default function App() {
     }
     return true;
   });
+
 
   const [showFamilyCodeModal, setShowFamilyCodeModal] = useState<boolean>(false);
 
@@ -754,7 +795,7 @@ export default function App() {
         }
 
         const promises: Promise<any>[] = [];
-        if (currentRole !== 'admin') {
+        if (currentRole !== 'admin' && !isViewerMode) {
           if (effectiveUserId) {
             promises.push(saveChildData(effectiveUserId, activeChildProfile.id, payload));
           }
@@ -764,6 +805,17 @@ export default function App() {
           if (activeChildProfile.subId) {
             promises.push(saveSubAccountData(activeChildProfile.subId, payload));
           }
+
+          // 🎓 Student Admin Cloud Workspace Sync (1 Link + 1 Password)
+          promises.push(saveStudentWorkspaceToCloud(studentId, payload));
+          promises.push(syncStudentProfileToCloud({
+            studentId,
+            studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
+            grade: activeChildProfile?.grade ? String(activeChildProfile.grade) : '',
+            className: classInfo.className,
+            avatar: activeChildProfile?.avatar || '👦',
+            viewerPassword,
+          }));
         }
         await Promise.all(promises);
         setLastCloudSyncSuccess(new Date());
@@ -775,7 +827,231 @@ export default function App() {
     }, 600);
     
     return () => clearTimeout(timer);
-  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode, currentRole]);
+  }, [classInfo, subjects, timetableSlots, lessons, lessonPlans, studyRecords, documents, periods, activeChildProfile?.id, activeChildProfile?.subId, isHydrated, effectiveUserId, family.familyCode, currentRole, isViewerMode, studentId, viewerPassword]);
+
+  // -------------------------------------------------------------------------
+  // 👨‍👩‍👧 PARENT VIEWER MODE & REALTIME LISTENER
+  // -------------------------------------------------------------------------
+  const handleParentViewerSuccess = (appState: any, profile: any) => {
+    setIsViewerMode(true);
+    setCurrentRole('viewer');
+    setViewerStudentProfile(profile);
+    setShowParentViewerModal(false);
+    setIsIntroOpen(false);
+
+    if (appState) {
+      if (appState.classInfo) setClassInfo(appState.classInfo);
+      if (appState.subjects) setSubjects(appState.subjects);
+      if (appState.timetableSlots) setTimetableSlots(appState.timetableSlots);
+      if (appState.periods) setPeriods(appState.periods);
+      if (appState.lessons) setLessons(appState.lessons);
+      if (appState.lessonPlans) setLessonPlans(appState.lessonPlans);
+      if (appState.studyRecords) setStudyRecords(appState.studyRecords);
+      if (appState.documents) setDocuments(appState.documents);
+
+      // Save to Parent's local IndexedDB for fast cached loads
+      try {
+        if (appState.classInfo) saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, appState.classInfo);
+        if (appState.subjects) saveLocalAppData(APP_DATA_KEYS.SUBJECTS, appState.subjects);
+        if (appState.timetableSlots) saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, appState.timetableSlots);
+        if (appState.periods) saveLocalAppData(APP_DATA_KEYS.PERIODS, appState.periods);
+        if (appState.lessons) saveLocalAppData(APP_DATA_KEYS.LESSONS, appState.lessons);
+        if (appState.lessonPlans) saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, appState.lessonPlans);
+        if (appState.studyRecords) saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, appState.studyRecords);
+        if (appState.documents) saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, appState.documents);
+      } catch (err) {
+        console.warn('Failed to cache student data in Parent IndexedDB:', err);
+      }
+    }
+  };
+
+  // Parent Viewer Link Handler: ?student=...
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const targetStudentId = urlParams.get('student');
+    if (!targetStudentId) return;
+
+    setViewerStudentId(targetStudentId);
+    const cachedPassword = sessionStorage.getItem(`parent_viewer_pwd_${targetStudentId}`);
+
+    if (cachedPassword) {
+      verifyAndFetchStudentWorkspace(targetStudentId, cachedPassword).then((res) => {
+        if (res.success) {
+          handleParentViewerSuccess(res.appState, res.profile);
+        } else {
+          setShowParentViewerModal(true);
+        }
+      }).catch(() => {
+        setShowParentViewerModal(true);
+      });
+    } else {
+      setShowParentViewerModal(true);
+    }
+  }, []);
+
+  // Realtime stream listener when Parent is viewing
+  useEffect(() => {
+    if (!isViewerMode || !viewerStudentId) return;
+    const unsubscribe = subscribeStudentWorkspace(viewerStudentId, (realtimeData) => {
+      if (realtimeData) {
+        if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
+        if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
+        if (realtimeData.subjects) setSubjects(realtimeData.subjects);
+        if (realtimeData.lessons) setLessons(realtimeData.lessons);
+        if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
+        if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
+        if (realtimeData.documents) setDocuments(realtimeData.documents);
+        if (realtimeData.periods) setPeriods(realtimeData.periods);
+      }
+    });
+    return () => unsubscribe();
+  }, [isViewerMode, viewerStudentId]);
+
+  const handleRefreshViewerData = async () => {
+    if (!viewerStudentId) return;
+    const cachedPassword = sessionStorage.getItem(`parent_viewer_pwd_${viewerStudentId}`) || viewerPassword;
+    const res = await verifyAndFetchStudentWorkspace(viewerStudentId, cachedPassword);
+    if (res.success && res.appState) {
+      handleParentViewerSuccess(res.appState, res.profile);
+      confetti();
+    }
+  };
+
+  const handleExitViewerMode = () => {
+    setIsViewerMode(false);
+    setCurrentRole('student');
+    setViewerStudentId(null);
+    setViewerStudentProfile(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('student');
+    window.history.replaceState({}, '', url.toString());
+  };
+
+  const handleUpdateViewerPassword = async (newPassword: string): Promise<boolean> => {
+    setViewerPassword(newPassword);
+    try {
+      localStorage.setItem(`${STORAGE_KEY_PREFIX}viewer_password`, newPassword);
+    } catch {}
+    const success = await syncStudentProfileToCloud({
+      studentId,
+      studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
+      grade: activeChildProfile?.grade ? String(activeChildProfile.grade) : '',
+      className: classInfo.className,
+      avatar: activeChildProfile?.avatar || '👦',
+      viewerPassword: newPassword,
+    });
+    return success;
+  };
+
+  const handleManualStudentSyncCloud = async (): Promise<boolean> => {
+    try {
+      const payload = {
+        classInfo,
+        subjects,
+        timetableSlots,
+        lessons,
+        lessonPlans,
+        studyRecords,
+        documents,
+        periods
+      };
+      await Promise.all([
+        syncStudentProfileToCloud({
+          studentId,
+          studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
+          grade: activeChildProfile?.grade ? String(activeChildProfile.grade) : '',
+          className: classInfo.className,
+          avatar: activeChildProfile?.avatar || '👦',
+          viewerPassword,
+        }),
+        saveStudentWorkspaceToCloud(studentId, payload)
+      ]);
+      setLastCloudSyncSuccess(new Date());
+      return true;
+    } catch (err) {
+      console.error('Manual student sync error:', err);
+      return false;
+    }
+  };
+
+  const handleExportStudentBackupJson = () => {
+    const backupData = {
+      app: 'VuLang_Learning_Workspace',
+      version: 2,
+      exportDate: new Date().toISOString(),
+      studentId,
+      studentName: classInfo.studentName,
+      className: classInfo.className,
+      viewerPassword,
+      appState: {
+        classInfo,
+        subjects,
+        timetableSlots,
+        periods,
+        lessons,
+        lessonPlans,
+        studyRecords,
+        documents
+      }
+    };
+
+    const dataStr = 'data:text/json;charset=utf-8,' + encodeURIComponent(JSON.stringify(backupData, null, 2));
+    const downloadAnchor = document.createElement('a');
+    const safeStudentName = (classInfo.studentName || 'HocSinh').replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const dateStr = new Date().toISOString().split('T')[0];
+    downloadAnchor.setAttribute('href', dataStr);
+    downloadAnchor.setAttribute('download', `SaoLuu_HocTap_${safeStudentName}_${dateStr}.json`);
+    document.body.appendChild(downloadAnchor);
+    downloadAnchor.click();
+    downloadAnchor.remove();
+  };
+
+  const handleImportStudentBackupJson = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        const data = parsed.appState || parsed;
+
+        if (data.classInfo) setClassInfo(data.classInfo);
+        if (data.subjects) setSubjects(data.subjects);
+        if (data.timetableSlots) setTimetableSlots(data.timetableSlots);
+        if (data.periods) setPeriods(data.periods);
+        if (data.lessons) setLessons(data.lessons);
+        if (data.lessonPlans) setLessonPlans(data.lessonPlans);
+        if (data.studyRecords) setStudyRecords(data.studyRecords);
+        if (data.documents) setDocuments(data.documents);
+        if (parsed.viewerPassword) setViewerPassword(parsed.viewerPassword);
+
+        // Save immediately to local IndexedDB
+        await Promise.all([
+          saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, data.classInfo || classInfo),
+          saveLocalAppData(APP_DATA_KEYS.SUBJECTS, data.subjects || subjects),
+          saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, data.timetableSlots || timetableSlots),
+          saveLocalAppData(APP_DATA_KEYS.PERIODS, data.periods || periods),
+          saveLocalAppData(APP_DATA_KEYS.LESSONS, data.lessons || lessons),
+          saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, data.lessonPlans || lessonPlans),
+          saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, data.studyRecords || studyRecords),
+          saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, data.documents || documents),
+        ]);
+
+        // Sync to cloud
+        await handleManualStudentSyncCloud();
+        confetti();
+        alert('Khôi phục dữ liệu học tập thành công!');
+      } catch (err) {
+        console.error('Lỗi khi đọc file sao lưu:', err);
+        alert('File sao lưu không hợp lệ hoặc bị hỏng.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  };
+
 
   const [isEditPeriodsOpen, setIsEditPeriodsOpen] = useState(false);
 
@@ -857,6 +1133,57 @@ export default function App() {
       return false;
     } finally {
       setIsCloudSyncingManual(false);
+    }
+  };
+
+  const handleGoogleLogin = async (role: UserRole) => {
+    try {
+      const user = await signInWithGoogle();
+      if (user) {
+        if (role === 'student') {
+          const childId = user.uid;
+          const childProfile: ChildProfile = {
+            id: childId,
+            name: user.displayName || 'Học sinh',
+            grade: 6,
+            className: 'Lớp 6A',
+            avatar: '🚀',
+            studentCode: 'G-' + user.uid.slice(0, 4).toUpperCase()
+          };
+          setActiveChildProfile(childProfile);
+          setClassInfo((prev) => ({
+            ...prev,
+            studentName: childProfile.name,
+            className: 'Lớp 6A'
+          }));
+          setCurrentRole('student');
+          setIsGuestMode(false);
+          try {
+            localStorage.setItem('mindmap_remembered_student_id', childId);
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}active_child_id`, childId);
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'student');
+          } catch {}
+          setIsIntroOpen(false);
+        } else {
+          setActiveChildProfile(null);
+          setCurrentRole('admin');
+          setFamily((prev) => ({
+            ...prev,
+            parentName: user.displayName || 'Phụ huynh',
+            parentEmail: user.email || ''
+          }));
+          try {
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}intro_dismissed`, 'true');
+            localStorage.setItem(`${STORAGE_KEY_PREFIX}role`, 'admin');
+          } catch {}
+          setIsIntroOpen(false);
+          setShowParentDashboard(true);
+        }
+      }
+    } catch (err) {
+      console.error('Error in Google Auth login:', err);
+      alert('Đăng nhập Google không thành công. Vui lòng thử lại sau!');
     }
   };
 
@@ -2224,6 +2551,8 @@ export default function App() {
         }}
         onImportBackupData={handleImportData}
         onStartDemo={startDemoSession}
+        onGoogleLogin={handleGoogleLogin}
+        onClose={() => setIsIntroOpen(false)}
       />
     );
   }
@@ -2283,6 +2612,7 @@ export default function App() {
         onOpenLessonBank={() => setIsLessonBankOpen(true)}
         onOpenSettings={handleOpenSettings}
         onOpenAboutStory={() => setShowAboutStory(true)}
+        onOpenIntro={() => setIsIntroOpen(true)}
         onExportData={handleExportData}
         onImportData={handleImportData}
         onResetAllData={handleResetAllData}
@@ -2294,13 +2624,16 @@ export default function App() {
           } catch {}
           setIsIntroOpen(true);
         }}
-        onLogout={() => {
+        onLogout={async () => {
           try {
+            await signOut();
             localStorage.removeItem('mindmap_remembered_student_id');
             localStorage.removeItem(`${STORAGE_KEY_PREFIX}active_child_id`);
             localStorage.removeItem(`${STORAGE_KEY_PREFIX}intro_dismissed`);
             localStorage.removeItem(`${STORAGE_KEY_PREFIX}role`);
-          } catch {}
+          } catch (err) {
+            console.error('Signout error:', err);
+          }
           setIsIntroOpen(true);
         }}
         currentChildAvatar={activeChildProfile?.avatar}
@@ -2321,10 +2654,15 @@ export default function App() {
         onAddChild={handleAddChild}
         onEditChild={handleEditChild}
         onDeleteChild={handleDeleteChild}
-        onManualSync={handleManualCloudSync}
+        onManualSync={handleManualStudentSyncCloud}
         isCloudSyncing={isCloudSyncingManual}
         isCloudAutoSaving={isCloudAutoSaving}
         lastCloudSyncSuccess={lastCloudSyncSuccess}
+        onOpenStudentShare={() => setShowStudentShareModal(true)}
+        isViewerMode={isViewerMode}
+        viewerStudentName={viewerStudentProfile?.studentName || classInfo.studentName}
+        onExitViewerMode={handleExitViewerMode}
+        onRefreshViewerData={handleRefreshViewerData}
         isGuestMode={isGuestMode}
         onOpenCloudSync={() => setShowAccountLinkingModal(true)}
         backupStatus={backupStatus}
@@ -2740,10 +3078,13 @@ export default function App() {
             } catch {}
             setIsIntroOpen(true);
           }}
-          onLogout={() => {
+          onLogout={async () => {
             try {
+              await signOut();
               localStorage.removeItem('mindmap_remembered_student_id');
-            } catch {}
+            } catch (err) {
+              console.error('Signout error:', err);
+            }
             setIsIntroOpen(true);
           }}
           backupStatus={backupStatus}
@@ -2883,15 +3224,49 @@ export default function App() {
             } catch {}
             setIsIntroOpen(true);
           }}
-          onLogout={() => {
+          onLogout={async () => {
             try {
+              await signOut();
               localStorage.removeItem('mindmap_remembered_student_id');
-            } catch {}
+            } catch (err) {
+              console.error('Signout error:', err);
+            }
             setIsIntroOpen(true);
           }}
           backupStatus={backupStatus}
           isGuestMode={isGuestMode}
           onOpenCloudSync={() => setShowAccountLinkingModal(true)}
+        />
+      )}
+
+      {/* Modal: Student Share Link & Backup */}
+      <StudentShareModal
+        isOpen={showStudentShareModal}
+        onClose={() => setShowStudentShareModal(false)}
+        studentId={studentId}
+        studentName={classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}
+        avatar={activeChildProfile?.avatar || '👦'}
+        viewerPassword={viewerPassword}
+        onUpdateViewerPassword={handleUpdateViewerPassword}
+        onExportBackupJson={handleExportStudentBackupJson}
+        onImportBackupJson={handleImportStudentBackupJson}
+        onManualSyncCloud={handleManualStudentSyncCloud}
+        isSyncingCloud={isCloudAutoSaving}
+      />
+
+      {/* Modal: Parent Viewer Login (1 Link + 1 Password) */}
+      {viewerStudentId && (
+        <ParentViewerLoginModal
+          isOpen={showParentViewerModal}
+          studentId={viewerStudentId}
+          onSuccessLogin={handleParentViewerSuccess}
+          onCancel={() => {
+            setShowParentViewerModal(false);
+            setViewerStudentId(null);
+            const url = new URL(window.location.href);
+            url.searchParams.delete('student');
+            window.history.replaceState({}, '', url.toString());
+          }}
         />
       )}
 
@@ -2918,6 +3293,7 @@ export default function App() {
           </div>
         </div>
       )}
+
 
     </div>
   );

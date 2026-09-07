@@ -1,4 +1,15 @@
-export type UserRole = 'student' | 'admin';
+export type UserRole = 'student' | 'admin' | 'viewer';
+
+export interface StudentCloudAccount {
+  studentId: string;
+  studentName: string;
+  grade?: string;
+  className?: string;
+  avatar?: string;
+  viewerPassword: string; // Mật khẩu xem bài cho cha mẹ
+  createdAt?: any;
+  updatedAt?: any;
+}
 
 export interface ChildProfile {
   id: string;
