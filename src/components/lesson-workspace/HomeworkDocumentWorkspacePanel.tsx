@@ -178,24 +178,27 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
     };
   }, [images]);
 
-  // Hàm mở PhotoSwipe lật trang trực tiếp 100% hoạt động mượt mà
-  const openPhotoSwipe = (initialIndex: number) => {
-    if (!imageMetas || imageMetas.length === 0) return;
+  // Khởi tạo PhotoSwipeLightbox để kích hoạt hiệu ứng zoom slow-motion chuẩn 100% từ mã nguồn mẫu
+  useEffect(() => {
+    if (imageMetas.length === 0) return;
 
-    const pswp = new PhotoSwipe({
-      dataSource: imageMetas.map((item, idx) => ({
-        src: item.url,
-        w: item.width || 1200,
-        h: item.height || 900,
-        alt: `Bài tập trang ${idx + 1}`,
-      })),
-      index: initialIndex,
+    const lightbox = new PhotoSwipeLightbox({
+      gallery: '#gallery',
+      children: 'a.pswp-gallery-item',
+      pswpModule: () => import('photoswipe'),
       bgOpacity: 0.9,
       showHideAnimationType: 'zoom',
+      showAnimationDuration: 150,
+      hideAnimationDuration: 150,
+      zoomAnimationDuration: 150,
     });
 
-    pswp.init();
-  };
+    lightbox.init();
+
+    return () => {
+      lightbox.destroy();
+    };
+  }, [imageMetas]);
 
   // 2. Sections & Key Points
   const [sections, setSections] = useState<MindmapSection[]>(() => {
@@ -719,76 +722,97 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
       {/* ========================================================================= */}
       {/* 📸 2. KHỐI TẢI ẢNH BÀI TẬP / VỞ GHI (NẰM DƯỚI SƠ ĐỒ TƯ DUY)                */}
       {/* ========================================================================= */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
-        }}
-        className={`bg-white dark:bg-slate-900 border rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 transition-all ${
-          isDragging
-            ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/30 ring-2 ring-teal-400'
-            : 'border-teal-200 dark:border-teal-800/60'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0">
-              <ImageIcon className="w-5 h-5" />
+      {/* ========================================================================= */}
+      {/* 📸 2. THƯ VIỆN ẢNH BỐ CỤC COLLAGE & Ô KÉO THẢ (NẰM DƯỚI SƠ ĐỒ TƯ DUY)        */}
+      {/* ========================================================================= */}
+      <div className="max-w-[920px] mx-auto w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-6 shadow-md space-y-4">
+        {/* 1. Tiêu đề */}
+        <h3 className="text-[22px] font-bold text-[#1a202c] dark:text-slate-100 flex items-center gap-2.5 m-0">
+          <span>📸</span> Thư Viện Ảnh Bố Cục Collage
+          {images.length > 0 && (
+            <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/80 dark:text-teal-200">
+              {images.length} trang
+            </span>
+          )}
+        </h3>
+
+        {/* Đường gạch ngăn cách */}
+        <hr className="border-0 h-[1px] bg-[#e2e8f0] dark:bg-slate-800 my-4" />
+
+        {/* 2. 🖼️ Khung Lưới Hiển Thị Gallery (Nằm trên) */}
+        {imageMetas.length > 0 ? (
+          <>
+            <div
+              id="gallery"
+              className="max-h-[500px] overflow-y-auto p-2.5 border border-[#e2e8f0] dark:border-slate-800 rounded-lg bg-[#f7fafc] dark:bg-slate-950/40 grid gap-2.5"
+              style={{
+                gridTemplateColumns: '1.2fr 1fr 1fr',
+                gridAutoRows: '200px'
+              }}
+            >
+              {imageMetas.map((item, idx) => {
+                // Ảnh đầu tiên chiếm cột lớn nhất bên trái và kéo dài 2 dòng
+                const isFirst = idx === 0;
+                const itemStyle = isFirst
+                  ? { gridColumn: '1 / 2', gridRow: 'span 2' }
+                  : {};
+
+                return (
+                  <figure
+                    key={idx}
+                    style={itemStyle}
+                    className="relative block w-full h-full overflow-hidden rounded-lg shadow-sm border border-[#e2e8f0] dark:border-slate-800 group"
+                  >
+                    <a
+                      href={item.url}
+                      data-pswp-width={item.width || 1200}
+                      data-pswp-height={item.height || 1600}
+                      data-cropped="true"
+                      target="_blank"
+                      rel="noreferrer"
+                      className="pswp-gallery-item block w-full h-full cursor-zoom-in"
+                    >
+                      <img
+                        src={item.url}
+                        alt={`Bài tập trang ${idx + 1}`}
+                        className="w-full h-full object-cover transition-transform duration-250 ease-in-out group-hover:scale-105 block"
+                      />
+
+                      {/* Badge Trang */}
+                      <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 bg-black/60 backdrop-blur-xs text-white rounded-full text-[11px] font-bold flex items-center gap-1 pointer-events-none">
+                        <span>Trang {idx + 1}</span>
+                      </div>
+
+                      {/* Chú thích PhotoSwipe */}
+                      <figcaption className="hidden">
+                        <strong>Trang {idx + 1}</strong> — Ảnh bài tập & vở ghi ({idx + 1}/{imageMetas.length})
+                      </figcaption>
+                    </a>
+
+                    {/* Nút xóa ảnh */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRemoveImage(idx);
+                      }}
+                      className="absolute top-2.5 right-2.5 z-20 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg shadow-md transition-transform hover:scale-110 cursor-pointer"
+                      title="Xóa trang ảnh này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  </figure>
+                );
+              })}
             </div>
-            <div>
-              <h4 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                Ảnh bài tập & vở ghi
-                {images.length > 0 && (
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/80 dark:text-teal-200">
-                    {images.length} trang
-                  </span>
-                )}
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tự động nén siêu nhẹ (~150KB) — Bấm ảnh bên dưới để xem lật trang
-              </p>
-            </div>
-          </div>
 
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isCompressing}
-            className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-          >
-            {isCompressing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Đang nén...</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                <span>Thêm ảnh vở ghi</span>
-              </>
-            )}
-          </button>
+            {/* Đường gạch ngăn cách */}
+            <hr className="border-0 h-[1px] bg-[#e2e8f0] dark:bg-slate-800 my-4" />
+          </>
+        ) : null}
 
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="hidden"
-            onChange={(e) => {
-              if (e.target.files) handleProcessImageFiles(e.target.files);
-              e.target.value = '';
-            }}
-          />
-        </div>
-
-        {/* Ô Kéo & Thả Nhỏ Gọn Tối Giản */}
+        {/* 3. ☁️ Khung Kéo & Thả Upload Ảnh (Nhỏ gọn - Nằm dưới) */}
         <div
           onDragOver={(e) => {
             e.preventDefault();
@@ -801,92 +825,38 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
             if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-2 ${
+          className={`border-2 border-dashed rounded-lg p-3 text-center cursor-pointer transition-all flex items-center justify-center gap-2.5 ${
             isDragging
-              ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/40'
-              : 'border-slate-200 dark:border-slate-800 hover:border-teal-400 dark:hover:border-teal-600 bg-slate-50/50 dark:bg-slate-900/40'
+              ? 'border-blue-600 bg-blue-100/50 dark:bg-blue-950/40 scale-[1.01]'
+              : 'border-[#3182ce] bg-[#ebf8ff] dark:bg-blue-950/20 hover:bg-[#e2f2ff] dark:hover:bg-blue-950/30'
           }`}
         >
           {isCompressing ? (
-            <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-semibold">
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 text-xs font-semibold">
               <Loader2 className="w-4 h-4 animate-spin" />
               <span>Đang tự động tối ưu hóa & nén ảnh...</span>
             </div>
           ) : (
-            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-xs font-medium">
-              <Upload className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-              <span>Kéo thả hoặc bấm vào đây để tải ảnh vở ghi</span>
+            <div className="flex items-center flex-wrap justify-center gap-2 text-slate-800 dark:text-slate-200">
+              <span className="text-xl leading-none">☁️</span>
+              <p className="text-[13.5px] font-semibold m-0">
+                Kéo & thả hình vào đây, hoặc <span className="text-blue-600 dark:text-blue-400 underline">chọn từ máy tính</span>
+              </p>
+              <span className="text-xs text-slate-500 dark:text-slate-400 font-medium shrink-0">(PNG, JPG, WEBP)</span>
             </div>
           )}
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) handleProcessImageFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
         </div>
-
-        {/* BENTO GRID IMAGE GALLERY WITH PHOTOSWIPE */}
-        {imageMetas.length > 0 && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-            {/* Container PhotoSwipe Gallery (Bento Layout) */}
-            <div
-              className={`grid gap-3 w-full ${
-                imageMetas.length === 1
-                  ? 'grid-cols-1 max-w-xl mx-auto'
-                  : imageMetas.length === 2
-                  ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto'
-                  : 'grid-cols-2 md:grid-cols-3 max-w-4xl mx-auto'
-              }`}
-            >
-              {imageMetas.slice(0, 5).map((item, idx) => {
-                const isFeatured = imageMetas.length >= 3 && idx === 0;
-                const isFifthWithMore = idx === 4 && imageMetas.length > 5;
-                const extraCount = imageMetas.length - 4;
-
-                return (
-                  <div
-                    key={idx}
-                    onClick={() => openPhotoSwipe(idx)}
-                    className={`relative group block rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-xs cursor-zoom-in transition-all duration-200 hover:shadow-md hover:scale-[1.01] ${
-                      isFeatured
-                        ? 'col-span-2 row-span-2 min-h-[240px] sm:min-h-[320px]'
-                        : imageMetas.length >= 3
-                        ? 'col-span-1 row-span-1 min-h-[120px] sm:min-h-[150px]'
-                        : 'aspect-[4/3]'
-                    }`}
-                  >
-                    <img
-                      src={item.url}
-                      alt={`Bài tập trang ${idx + 1}`}
-                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 block"
-                    />
-
-                    {/* Badge Trang */}
-                    <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 bg-black/60 backdrop-blur-xs text-white rounded-full text-[11px] font-bold flex items-center gap-1 pointer-events-none">
-                      <span>Trang {idx + 1}</span>
-                    </div>
-
-                    {/* Nút xóa ảnh */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        handleRemoveImage(idx);
-                      }}
-                      className="absolute top-2.5 right-2.5 z-20 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-md transition-transform hover:scale-110 cursor-pointer"
-                      title="Xóa trang ảnh này"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Overlay +N trang nếu số lượng > 5 */}
-                    {isFifthWithMore && (
-                      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white z-10 pointer-events-none transition-opacity group-hover:bg-slate-950/70">
-                        <span className="text-2xl sm:text-3xl font-extrabold">+ {extraCount}</span>
-                        <span className="text-xs font-bold text-slate-200">trang nữa</span>
-                      </div>
-                    )}
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
