@@ -9,14 +9,10 @@ import {
   Upload, 
   Cloud, 
   ShieldCheck, 
-  Smartphone, 
-  ExternalLink,
-  Loader2,
-  RefreshCw,
   FolderDown,
+  Loader2,
   Info
 } from 'lucide-react';
-import { syncStudentProfileToCloud } from '../lib/firebase';
 
 interface StudentShareModalProps {
   isOpen: boolean;
@@ -25,7 +21,6 @@ interface StudentShareModalProps {
   studentName: string;
   avatar?: string;
   viewerPassword?: string;
-  onUpdateViewerPassword: (newPassword: string) => Promise<boolean>;
   onExportBackupJson: () => void;
   onImportBackupJson: (e: React.ChangeEvent<HTMLInputElement>) => void;
   onManualSyncCloud: () => Promise<boolean>;
@@ -39,7 +34,6 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
   studentName,
   avatar = '👦',
   viewerPassword = '123456',
-  onUpdateViewerPassword,
   onExportBackupJson,
   onImportBackupJson,
   onManualSyncCloud,
@@ -47,9 +41,6 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
 }) => {
   const [copiedLink, setCopiedLink] = useState(false);
   const [copiedPassword, setCopiedPassword] = useState(false);
-  const [isEditingPassword, setIsEditingPassword] = useState(false);
-  const [newPassword, setNewPassword] = useState(viewerPassword);
-  const [passwordSaveStatus, setPasswordSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [syncFeedback, setSyncFeedback] = useState<'idle' | 'success' | 'error'>('idle');
   const fileInputRef = React.useRef<HTMLInputElement>(null);
 
@@ -96,20 +87,6 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
       }
     } catch (err) {
       console.error('Copy password error:', err);
-    }
-  };
-
-  const handleSavePassword = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!newPassword.trim()) return;
-    setPasswordSaveStatus('saving');
-    const success = await onUpdateViewerPassword(newPassword.trim());
-    if (success) {
-      setPasswordSaveStatus('saved');
-      setIsEditingPassword(false);
-      setTimeout(() => setPasswordSaveStatus('idle'), 2000);
-    } else {
-      setPasswordSaveStatus('idle');
     }
   };
 
@@ -195,72 +172,28 @@ export const StudentShareModal: React.FC<StudentShareModalProps> = ({
                 <Key className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
                 <span>2. Mật khẩu xem bài dành cho Cha Mẹ:</span>
               </label>
-              {!isEditingPassword && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setNewPassword(viewerPassword);
-                    setIsEditingPassword(true);
-                  }}
-                  className="text-[11px] font-bold text-amber-700 dark:text-amber-300 hover:underline cursor-pointer"
-                >
-                  Đổi mật khẩu
-                </button>
-              )}
             </div>
 
-            {isEditingPassword ? (
-              <form onSubmit={handleSavePassword} className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={newPassword}
-                  onChange={(e) => setNewPassword(e.target.value)}
-                  placeholder="Nhập mật khẩu mới..."
-                  className="w-full px-3 py-2 text-xs font-bold bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-amber-500 focus:outline-hidden"
-                  autoFocus
-                />
-                <button
-                  type="submit"
-                  disabled={passwordSaveStatus === 'saving'}
-                  className="px-3 py-2 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold shrink-0 flex items-center gap-1 cursor-pointer active:scale-95 shadow-xs"
-                >
-                  {passwordSaveStatus === 'saving' ? (
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                  ) : (
-                    <Check className="w-3.5 h-3.5" />
-                  )}
-                  <span>Lưu</span>
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setIsEditingPassword(false)}
-                  className="px-2.5 py-2 rounded-lg bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 text-xs font-bold shrink-0 cursor-pointer"
-                >
-                  Hủy
-                </button>
-              </form>
-            ) : (
-              <div className="flex items-center gap-2">
-                <div className="w-full px-3 py-2 text-sm font-black tracking-widest bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-amber-900 dark:text-amber-200 flex items-center justify-between">
-                  <span>{viewerPassword}</span>
-                  <span className="text-[11px] font-medium text-slate-400 font-sans tracking-normal">
-                    (Cung cấp mã này cho Bố/Mẹ)
-                  </span>
-                </div>
-                <button
-                  type="button"
-                  onClick={handleCopyPassword}
-                  className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95 shadow-xs ${
-                    copiedPassword
-                      ? 'bg-emerald-600 text-white'
-                      : 'bg-amber-600 hover:bg-amber-700 text-white'
-                  }`}
-                >
-                  {copiedPassword ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedPassword ? 'Đã chép!' : 'Chép mã'}</span>
-                </button>
+            <div className="flex items-center gap-2">
+              <div className="w-full px-3 py-2 text-sm font-black tracking-widest bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 rounded-lg text-amber-900 dark:text-amber-200 flex items-center justify-between">
+                <span>{viewerPassword}</span>
+                <span className="text-[11px] font-medium text-slate-400 font-sans tracking-normal">
+                  (Cung cấp mã này cho Bố/Mẹ)
+                </span>
               </div>
-            )}
+              <button
+                type="button"
+                onClick={handleCopyPassword}
+                className={`px-3.5 py-2 rounded-lg text-xs font-bold flex items-center gap-1.5 shrink-0 transition-all cursor-pointer active:scale-95 shadow-xs ${
+                  copiedPassword
+                    ? 'bg-emerald-600 text-white'
+                    : 'bg-amber-600 hover:bg-amber-700 text-white'
+                }`}
+              >
+                {copiedPassword ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedPassword ? 'Đã chép!' : 'Chép mã'}</span>
+              </button>
+            </div>
           </div>
 
           {/* Card 3: Cơ chế sao lưu & Tải lên Google Drive / File máy */}
