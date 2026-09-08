@@ -626,47 +626,31 @@ export default function App() {
       try {
         const isParentRole = currentRole === 'admin';
 
-        // Fetch Local IndexedDB and Cloud Firestore in parallel with 8s timeout
-        const [localResult, cloudResult] = await Promise.allSettled([
-          isParentRole ? Promise.all([
-            getChildLocalAppData<ClassInfo>(id, APP_DATA_KEYS.CLASS_INFO),
-            getChildLocalAppData<Subject[]>(id, APP_DATA_KEYS.SUBJECTS),
-            getChildLocalAppData<TimetableSlot[]>(id, APP_DATA_KEYS.TIMETABLE_SLOTS),
-            getChildLocalAppData<PeriodInfo[]>(id, APP_DATA_KEYS.PERIODS),
-            getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
-            getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
-            getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
-            getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
-          ]) : Promise.all([
-            getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
-            getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
-            getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
-            getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
-            getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
-            getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
-            getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
-            getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
-          ]),
-
-          (async () => {
-            let firebaseData = null;
-            if (effectiveUserId) {
-              firebaseData = await getChildData(effectiveUserId, id);
-            }
-            if (!firebaseData && family.familyCode) {
-              firebaseData = await fetchChildDataByCodeFromCloud(family.familyCode, id, { timeoutMs: 8000 });
-            }
-            if (!firebaseData && studentId && currentRole === 'student') {
-              firebaseData = await fetchStudentWorkspaceFromCloud(studentId, { timeoutMs: 8000 });
-            }
-            return firebaseData;
-          })()
-        ]);
+        // ONLY Fetch Local IndexedDB
+        const localResult = await (isParentRole ? Promise.all([
+          getChildLocalAppData<ClassInfo>(id, APP_DATA_KEYS.CLASS_INFO),
+          getChildLocalAppData<Subject[]>(id, APP_DATA_KEYS.SUBJECTS),
+          getChildLocalAppData<TimetableSlot[]>(id, APP_DATA_KEYS.TIMETABLE_SLOTS),
+          getChildLocalAppData<PeriodInfo[]>(id, APP_DATA_KEYS.PERIODS),
+          getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
+          getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
+          getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
+          getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
+        ]) : Promise.all([
+          getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
+          getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
+          getLocalAppData<TimetableSlot[]>(APP_DATA_KEYS.TIMETABLE_SLOTS),
+          getLocalAppData<PeriodInfo[]>(APP_DATA_KEYS.PERIODS),
+          getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
+          getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
+          getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
+          getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
+        ]));
 
         if (!isMounted) return;
 
         let localDataFound = false;
-        if (localResult.status === 'fulfilled' && localResult.value) {
+        if (localResult) {
           const [
             localClassInfo,
             localSubjects,
@@ -676,7 +660,7 @@ export default function App() {
             localLessonPlans,
             localStudyRecords,
             localDocuments
-          ] = localResult.value;
+          ] = localResult;
 
           const isCompleteCanonicalDataset = 
             localClassInfo !== null &&
@@ -702,54 +686,8 @@ export default function App() {
           }
         }
 
-        const firebaseData = cloudResult.status === 'fulfilled' ? cloudResult.value : null;
-
-        // Ưu tiên Local Data, KHÔNG BAO GIỜ để Cloud cũ ghi đè Local mới
-        if (localDataFound) {
-          // Local đã nạp xong, bỏ qua Cloud data trong bước khởi tạo này.
-          // Cloud sync 2 chiều realtime sẽ lo phần cập nhật sau (nếu có thay đổi thực sự từ nơi khác)
-        } else if (firebaseData) {
-          // CHỈ lấy Cloud data nếu chưa có Local data (ví dụ: đăng nhập máy mới)
-          setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
-          setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
-          setSubjects(firebaseData.subjects || SUBJECTS_LIST);
-          setPeriods(firebaseData.periods || STANDARD_PERIODS);
-          setLessons(firebaseData.lessons || INITIAL_LESSONS_BANK);
-          setLessonPlans(firebaseData.lessonPlans || generateInitialLessonPlans(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS, getVietnamCurrentMondayStr()));
-          setStudyRecords(firebaseData.studyRecords || []);
-          setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
-          loadedChildIdRef.current = id;
-
-          // Lưu xuống Local ngay
-          try {
-            if (currentRole === 'admin') {
-              Promise.all([
-                saveChildLocalAppData(id, APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
-                saveChildLocalAppData(id, APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
-                saveChildLocalAppData(id, APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
-                saveChildLocalAppData(id, APP_DATA_KEYS.PERIODS, firebaseData.periods),
-                saveChildLocalAppData(id, APP_DATA_KEYS.LESSONS, firebaseData.lessons),
-                saveChildLocalAppData(id, APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
-                saveChildLocalAppData(id, APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
-                saveChildLocalAppData(id, APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
-              ]).catch(e => console.warn('Cache save warning:', e));
-            } else {
-              Promise.all([
-                saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, firebaseData.classInfo),
-                saveLocalAppData(APP_DATA_KEYS.SUBJECTS, firebaseData.subjects),
-                saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, firebaseData.timetableSlots),
-                saveLocalAppData(APP_DATA_KEYS.PERIODS, firebaseData.periods),
-                saveLocalAppData(APP_DATA_KEYS.LESSONS, firebaseData.lessons),
-                saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, firebaseData.lessonPlans),
-                saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, firebaseData.studyRecords),
-                saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, firebaseData.documents),
-              ]).catch(e => console.warn('Cache save warning:', e));
-            }
-          } catch (cacheErr) {
-            console.warn('Lỗi ghi cache IndexedDB từ Cloud:', cacheErr);
-          }
-        } else {
-          // Chưa có cả dữ liệu Cloud và Local -> khởi tạo dữ liệu mẫu sạch
+        if (!localDataFound) {
+          // Chưa có dữ liệu Local -> khởi tạo dữ liệu mẫu sạch
           const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
           const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
             ? rawGrade
@@ -775,22 +713,27 @@ export default function App() {
           setDocuments(INITIAL_DOCUMENTS);
           loadedChildIdRef.current = id;
 
-          // Khởi tạo trên Cloud cho học sinh
-          if (currentRole !== 'admin' && family.familyCode) {
-            const initialPayload = {
-              classInfo: initialClassInfo,
-              timetableSlots: INITIAL_TIMETABLE_SLOTS,
-              subjects: SUBJECTS_LIST,
-              periods: STANDARD_PERIODS,
-              lessons: INITIAL_LESSONS_BANK,
-              lessonPlans: defaultPlans,
-              studyRecords: defaultRecords,
-              documents: INITIAL_DOCUMENTS
-            };
-            syncChildDataByCodeToCloud(family.familyCode, id, initialPayload).catch(console.error);
-          }
+          // Lưu thẳng dữ liệu khởi tạo xuống Local
+          const isParentAdmin = currentRole === 'admin';
+          const saveLocalFn = (key: any, data: any) => {
+            if (isParentAdmin && id) {
+              return saveChildLocalAppData(id, key, data);
+            }
+            return saveLocalAppData(key, data);
+          };
+
+          Promise.all([
+            saveLocalFn(APP_DATA_KEYS.CLASS_INFO, initialClassInfo),
+            saveLocalFn(APP_DATA_KEYS.SUBJECTS, SUBJECTS_LIST),
+            saveLocalFn(APP_DATA_KEYS.TIMETABLE_SLOTS, INITIAL_TIMETABLE_SLOTS),
+            saveLocalFn(APP_DATA_KEYS.PERIODS, STANDARD_PERIODS),
+            saveLocalFn(APP_DATA_KEYS.LESSONS, INITIAL_LESSONS_BANK),
+            saveLocalFn(APP_DATA_KEYS.LESSON_PLANS, defaultPlans),
+            saveLocalFn(APP_DATA_KEYS.STUDY_RECORDS, defaultRecords),
+            saveLocalFn(APP_DATA_KEYS.DOCUMENTS, INITIAL_DOCUMENTS),
+          ]).catch(e => console.warn('Lỗi ghi Local IndexedDB init:', e));
         }
-        } catch (err) {
+      } catch (err) {
         console.error('Failed to hydrate profile', err);
         loadedChildIdRef.current = null;
       } finally {
@@ -807,557 +750,63 @@ export default function App() {
     return () => { isMounted = false; };
   }, [activeChildProfile?.id, effectiveUserId, family.familyCode, currentRole, transferUpdateTrigger, studentId]);
 
-  // 2-Way Realtime Stream Listener for Family Code (Multi-device live sync via onSnapshot)
-  useEffect(() => {
-    const famCode = family?.familyCode;
-    const childId = activeChildProfile?.id;
-
-    const unsubs: (() => void)[] = [];
-
-    // Realtime listener cho Family Code (Đồng bộ tức thì mọi thay đổi qua mã gia đình)
-    if (famCode && childId) {
-      const unsubFam = subscribeChildDataByCode(famCode, childId, (realtimeData) => {
-        if (realtimeData && isHydrated && !isHydratingRef.current) {
-          if (realtimeData.timetableSlots) {
-            setTimetableSlots((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.timetableSlots) ? prev : realtimeData.timetableSlots);
-          }
-          if (realtimeData.classInfo) {
-            setClassInfo((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.classInfo) ? prev : realtimeData.classInfo);
-          }
-          if (realtimeData.subjects) {
-            setSubjects((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.subjects) ? prev : realtimeData.subjects);
-          }
-          if (realtimeData.lessons) {
-            setLessons((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessons) ? prev : realtimeData.lessons);
-          }
-          if (realtimeData.lessonPlans) {
-            setLessonPlans((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessonPlans) ? prev : realtimeData.lessonPlans);
-          }
-          if (realtimeData.studyRecords) {
-            setStudyRecords((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.studyRecords) ? prev : realtimeData.studyRecords);
-          }
-          if (realtimeData.documents) {
-            setDocuments((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.documents) ? prev : realtimeData.documents);
-          }
-          if (realtimeData.periods) {
-            setPeriods((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.periods) ? prev : realtimeData.periods);
-          }
-        }
-      });
-      unsubs.push(unsubFam);
-    }
-
-    return () => {
-      unsubs.forEach(fn => {
-        try { fn(); } catch {}
-      });
-    };
-  }, [activeChildProfile?.id, family?.familyCode, isHydrated]);
-
   const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
-  
-// ============================================================
-// LOCAL-FIRST PERSISTENCE + CLOUD LATEST-SNAPSHOT QUEUE
-// ============================================================
 
-const isCloudSaveInFlightRef = useRef(false);
+  // ============================================================
+  // LOCAL-FIRST PERSISTENCE ONLY (100% OFFLINE)
+  // ============================================================
+  useEffect(() => {
+    if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
+    if (loadedChildIdRef.current !== activeChildProfile.id) return;
 
-const cloudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const payload = {
+      classInfo,
+      subjects,
+      timetableSlots,
+      lessons,
+      lessonPlans,
+      studyRecords,
+      documents,
+      periods,
+    };
 
-const latestSnapshotRef = useRef<{
-  payload: any;
-  signature: string;
-  revision: number;
-} | null>(null);
+    const isParentAdmin = currentRole === 'admin';
+    const childId = activeChildProfile.id;
 
-const lastCloudSavedSignatureRef = useRef<string>('');
+    const saveLocalFn = (key: any, data: any) => {
+      if (isParentAdmin && childId) {
+        return saveChildLocalAppData(childId, key, data);
+      }
+      return saveLocalAppData(key, data);
+    };
 
-const localRevisionRef = useRef<number>(0);
+    Promise.all([
+      saveLocalFn(APP_DATA_KEYS.CLASS_INFO, payload.classInfo),
+      saveLocalFn(APP_DATA_KEYS.SUBJECTS, payload.subjects),
+      saveLocalFn(APP_DATA_KEYS.TIMETABLE_SLOTS, payload.timetableSlots),
+      saveLocalFn(APP_DATA_KEYS.PERIODS, payload.periods),
+      saveLocalFn(APP_DATA_KEYS.LESSONS, payload.lessons),
+      saveLocalFn(APP_DATA_KEYS.LESSON_PLANS, payload.lessonPlans),
+      saveLocalFn(APP_DATA_KEYS.STUDY_RECORDS, payload.studyRecords),
+      saveLocalFn(APP_DATA_KEYS.DOCUMENTS, payload.documents),
+    ]).catch(error => {
+      console.error(`[LOCAL SAVE FAILED]`, error);
+    });
 
-const pendingCloudRevisionRef = useRef<number | null>(null);
-
-const buildPersistencePayload = () => ({
-  classInfo,
-  subjects,
-  timetableSlots,
-  lessons,
-  lessonPlans,
-  studyRecords,
-  documents,
-  periods,
-});
-
-const createPayloadSignature = (payload: any): string => {
-  try {
-    return JSON.stringify(payload);
-  } catch (error) {
-    console.error('[PERSISTENCE] Cannot create payload signature:', error);
-    return '';
-  }
-};
-
-const getLocalSaveFunction = (
-  isParentAdmin: boolean,
-  childId: string
-) => {
-  if (isParentAdmin && childId) {
-    return (key: any, data: any) =>
-      saveChildLocalAppData(childId, key, data);
-  }
-
-  return (key: any, data: any) =>
-    saveLocalAppData(key, data);
-};
-
-// ------------------------------------------------------------
-// LOCAL SAVE
-// ------------------------------------------------------------
-
-const persistPayloadToIndexedDB = async (
-  payload: any,
-  revision: number
-): Promise<void> => {
-  const isParentAdmin = currentRole === 'admin';
-  const childId = activeChildProfile?.id || '';
-
-  const saveLocalFn = getLocalSaveFunction(
-    isParentAdmin,
-    childId
-  );
-
-  console.log(
-    `[LOCAL SAVE START] revision=${revision}`
-  );
-
-  await Promise.all([
-    saveLocalFn(APP_DATA_KEYS.CLASS_INFO, payload.classInfo),
-    saveLocalFn(APP_DATA_KEYS.SUBJECTS, payload.subjects),
-    saveLocalFn(
-      APP_DATA_KEYS.TIMETABLE_SLOTS,
-      payload.timetableSlots
-    ),
-    saveLocalFn(APP_DATA_KEYS.PERIODS, payload.periods),
-    saveLocalFn(APP_DATA_KEYS.LESSONS, payload.lessons),
-    saveLocalFn(
-      APP_DATA_KEYS.LESSON_PLANS,
-      payload.lessonPlans
-    ),
-    saveLocalFn(
-      APP_DATA_KEYS.STUDY_RECORDS,
-      payload.studyRecords
-    ),
-    saveLocalFn(APP_DATA_KEYS.DOCUMENTS, payload.documents),
+  }, [
+    classInfo,
+    subjects,
+    timetableSlots,
+    lessons,
+    lessonPlans,
+    studyRecords,
+    documents,
+    periods,
+    activeChildProfile?.id,
+    isHydrated,
+    currentRole
   ]);
-
-  console.log(
-    `[LOCAL SAVE SUCCESS] revision=${revision}`
-  );
-};
-
-// ------------------------------------------------------------
-// CLOUD SAVE
-// ------------------------------------------------------------
-
-const saveSnapshotToCloud = async (
-  snapshot: {
-    payload: any;
-    signature: string;
-    revision: number;
-  }
-): Promise<boolean> => {
-
-  // Viewer / Parent / Admin không ghi Cloud
-  if (currentRole === 'admin' || isViewerMode) {
-    return true;
-  }
-
-  if (!activeChildProfile?.id) {
-    console.warn(
-      '[CLOUD SAVE] No active child profile'
-    );
-    return false;
-  }
-
-  const payload = snapshot.payload;
-
-  console.log(
-    `[CLOUD SAVE START] revision=${snapshot.revision}`
-  );
-
-  try {
-    const promises: Promise<any>[] = [];
-
-    if (effectiveUserId) {
-      promises.push(
-        saveChildData(
-          effectiveUserId,
-          activeChildProfile.id,
-          payload
-        )
-      );
-    }
-
-    if (family.familyCode) {
-      promises.push(
-        syncChildDataByCodeToCloud(
-          family.familyCode,
-          activeChildProfile.id,
-          payload
-        )
-      );
-    }
-
-    // Student workspace
-    promises.push(
-      saveStudentWorkspaceToCloud(
-        studentId,
-        payload
-      )
-    );
-
-    promises.push(
-      syncStudentProfileToCloud({
-        studentId,
-        studentName:
-          payload.classInfo?.studentName ||
-          activeChildProfile?.name ||
-          'Học Sinh',
-        grade: activeChildProfile?.grade
-          ? String(activeChildProfile.grade)
-          : '',
-        className: payload.classInfo?.className,
-        avatar:
-          activeChildProfile?.avatar || '👦',
-        viewerPassword,
-        studentEmail:
-          currentUser?.email || '',
-      })
-    );
-
-    await Promise.all(promises);
-
-    console.log(
-      `[CLOUD SAVE SUCCESS] revision=${snapshot.revision}`
-    );
-
-    lastCloudSavedSignatureRef.current =
-      snapshot.signature;
-
-    setLastCloudSyncSuccess(new Date());
-
-    return true;
-
-  } catch (error) {
-
-    console.error(
-      `[CLOUD SAVE FAILED] revision=${snapshot.revision}`,
-      error
-    );
-
-    return false;
-  }
-};
-
-// ------------------------------------------------------------
-// CLOUD QUEUE PROCESSOR
-// ------------------------------------------------------------
-
-const processCloudQueue = async () => {
-
-  // Không cho phép 2 Cloud request chạy đồng thời.
-  if (isCloudSaveInFlightRef.current) {
-    return;
-  }
-
-  const snapshot = latestSnapshotRef.current;
-
-  if (!snapshot) {
-    setIsCloudAutoSaving(false);
-    return;
-  }
-
-  // Snapshot này đã save rồi.
-  if (
-    snapshot.signature ===
-    lastCloudSavedSignatureRef.current
-  ) {
-    setIsCloudAutoSaving(false);
-    return;
-  }
-
-  isCloudSaveInFlightRef.current = true;
-
-  const savingSnapshot = snapshot;
-
-  pendingCloudRevisionRef.current =
-    savingSnapshot.revision;
-
-  try {
-
-    const success =
-      await saveSnapshotToCloud(
-        savingSnapshot
-      );
-
-    if (!success) {
-      // Không xóa latestSnapshot.
-      // Giữ lại để lần sau retry.
-      setIsCloudAutoSaving(false);
-      return;
-    }
-
-    /*
-     * QUAN TRỌNG:
-     *
-     * Trong lúc savingSnapshot đang upload,
-     * latestSnapshotRef có thể đã thay đổi.
-     *
-     * Ví dụ:
-     *
-     * savingSnapshot = A
-     * latestSnapshot = D
-     *
-     * Không được đánh dấu D là đã save.
-     */
-
-    const latestSnapshot =
-      latestSnapshotRef.current;
-
-    if (
-      latestSnapshot &&
-      latestSnapshot.signature !==
-        savingSnapshot.signature
-    ) {
-
-      console.log(
-        `[CLOUD QUEUE] Newer snapshot detected: ` +
-        `${savingSnapshot.revision} -> ` +
-        `${latestSnapshot.revision}`
-      );
-
-      /*
-       * Không gọi processCloudQueue() đệ quy ngay lập tức.
-       *
-       * Cho debounce 1 giây để tiếp tục gom thay đổi.
-       */
-      scheduleCloudSave(1000);
-
-    } else {
-
-      setIsCloudAutoSaving(false);
-    }
-
-  } catch (error) {
-
-    console.error(
-      '[CLOUD QUEUE] Unexpected error:',
-      error
-    );
-
-  } finally {
-
-    isCloudSaveInFlightRef.current = false;
-    pendingCloudRevisionRef.current = null;
-
-    /*
-     * Nếu có snapshot mới xuất hiện trong lúc request đang chạy,
-     * giữ queue lại.
-     */
-    const latestSnapshot =
-      latestSnapshotRef.current;
-
-    if (
-      latestSnapshot &&
-      latestSnapshot.signature !==
-        lastCloudSavedSignatureRef.current
-    ) {
-
-      scheduleCloudSave(1000);
-
-    } else {
-
-      setIsCloudAutoSaving(false);
-    }
-  }
-};
-
-// ------------------------------------------------------------
-// CLOUD DEBOUNCE
-// ------------------------------------------------------------
-
-const scheduleCloudSave = (
-  delay = 1000 // Giảm xuống 1 giây để Cloud sync mượt mà tức thì, nhưng vẫn an toàn nhờ queue
-) => {
-
-  if (cloudTimerRef.current) {
-    clearTimeout(cloudTimerRef.current);
-  }
-
-  cloudTimerRef.current =
-    setTimeout(() => {
-
-      cloudTimerRef.current = null;
-
-      processCloudQueue();
-
-    }, delay);
-};
-
-// ------------------------------------------------------------
-// MAIN AUTO-SAVE EFFECT
-// ------------------------------------------------------------
-
-useEffect(() => {
-
-  if (
-    isHydratingRef.current ||
-    !isHydrated ||
-    !activeChildProfile
-  ) {
-    return;
-  }
-
-  if (
-    loadedChildIdRef.current !==
-    activeChildProfile.id
-  ) {
-    return;
-  }
-
-  const payload =
-    buildPersistencePayload();
-
-  const signature =
-    createPayloadSignature(payload);
-
-  /*
-   * Mỗi state snapshot mới nhận revision mới.
-   */
-  localRevisionRef.current += 1;
-
-  const revision =
-    localRevisionRef.current;
-
-  const snapshot = {
-    payload,
-    signature,
-    revision,
-  };
-
-  /*
-   * QUAN TRỌNG:
-   *
-   * latestSnapshotRef luôn trỏ tới snapshot MỚI NHẤT.
-   *
-   * Đây là cách tránh closure cũ.
-   */
-  latestSnapshotRef.current =
-    snapshot;
-
-  // ----------------------------------------------------------
-  // 1. LOCAL FIRST
-  // ----------------------------------------------------------
-
-  persistPayloadToIndexedDB(
-    payload,
-    revision
-  ).catch(error => {
-
-    console.error(
-      `[LOCAL SAVE FAILED] revision=${revision}`,
-      error
-    );
-
-  });
-
-  // ----------------------------------------------------------
-  // 2. CLOUD
-  // ----------------------------------------------------------
-
-  if (
-    currentRole === 'admin' ||
-    isViewerMode
-  ) {
-    setIsCloudAutoSaving(false);
-    return;
-  }
-
-  /*
-   * Nếu snapshot này giống snapshot Cloud đã save
-   * thì không cần Cloud request.
-   */
-  if (
-    signature ===
-    lastCloudSavedSignatureRef.current
-  ) {
-    setIsCloudAutoSaving(false);
-    return;
-  }
-
-  setIsCloudAutoSaving(true);
-
-  /*
-   * Mỗi thay đổi reset debounce 1 giây.
-   *
-   * A
-   * ↓
-   * B
-   * ↓
-   * reset timer
-   * ↓
-   * 1s
-   * Cloud B
-   */
-  scheduleCloudSave(1000);
-
-  return () => {
-    /*
-     * Không clear timer ở đây.
-     *
-     * React cleanup xảy ra mỗi lần dependency thay đổi.
-     * Nếu clear timer ở đây, debounce sẽ không hoạt động
-     * đúng theo latest snapshot.
-     */
-  };
-
-}, [
-  classInfo,
-  subjects,
-  timetableSlots,
-  lessons,
-  lessonPlans,
-  studyRecords,
-  documents,
-  periods,
-  activeChildProfile?.id,
-  isHydrated,
-  effectiveUserId,
-  family.familyCode,
-  currentRole,
-  isViewerMode,
-  studentId,
-]);
-
-// ------------------------------------------------------------
-// CLEANUP
-// ------------------------------------------------------------
-
-useEffect(() => {
-
-  return () => {
-
-    if (cloudTimerRef.current) {
-      clearTimeout(
-        cloudTimerRef.current
-      );
-
-      cloudTimerRef.current = null;
-    }
-
-  };
-
-}, []);
 
   // -------------------------------------------------------------------------
   // 👨‍👩‍👧 PARENT VIEWER MODE & REALTIME LISTENER
