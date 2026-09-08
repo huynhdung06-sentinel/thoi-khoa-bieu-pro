@@ -499,115 +499,58 @@ export default function App() {
     return () => unsubscribe();
   }, []);
 
-  // Sync latest family data & Handle Magic Direct Link & 0ms Token on startup or auth ready
+  // Handle Magic Direct Link & 0ms Token on startup or auth ready
   useEffect(() => {
     if (isAuthLoading) return;
 
-    let isCancelled = false;
-    const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 8000);
+    // We are fully offline now, so just handle tokens and url parsing
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    const urlFamilyCode = urlParams.get('family');
+    const urlChildId = urlParams.get('child');
 
-    const checkCloudFamily = async () => {
-      try {
-        const urlParams = new URLSearchParams(window.location.search);
-        const urlToken = urlParams.get('token');
-        const urlFamilyCode = urlParams.get('family');
-        const urlChildId = urlParams.get('child');
+    // 1. FAST-PATH: Handle 0ms Sub-Account Token
+    if (urlToken) {
+      const decoded = decodeSubAccountToken(urlToken);
+      if (decoded && decoded.subId) {
+        signInAnonymouslyUser().catch(() => {});
+        localStorage.setItem('mindmap_sub_account_id', decoded.subId);
 
-        // 1. FAST-PATH: Handle 0ms Sub-Account Token
-        if (urlToken) {
-          const decoded = decodeSubAccountToken(urlToken);
-          if (decoded && decoded.subId) {
-            signInAnonymouslyUser().catch(() => {});
-            localStorage.setItem('mindmap_sub_account_id', decoded.subId);
+        let targetChild = family.children?.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
+        if (!targetChild) {
+          targetChild = {
+            id: decoded.subId,
+            subId: decoded.subId,
+            parentId: decoded.parentId,
+            name: decoded.childName || 'Người học',
+            grade: decoded.childGrade || '7',
+            className: decoded.childGrade || 'Lớp 7',
+            avatar: '🚀'
+          };
+          setFamily(prev => ({
+            ...prev,
+            children: [...(prev.children || []), targetChild!]
+          }));
+        }
+        setActiveChildProfile(targetChild);
+        localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
+        if (decoded.parentId) {
+          localStorage.setItem('mindmap_remembered_family_code', decoded.parentId);
+        }
+        setIsIntroOpen(false);
 
-            let targetChild = family.children?.find(c => (c.subId && c.subId === decoded.subId) || c.name === decoded.childName);
-            if (!targetChild) {
-              targetChild = {
-                id: decoded.subId,
-                subId: decoded.subId,
-                parentId: decoded.parentId,
-                name: decoded.childName || 'Người học',
-                grade: decoded.childGrade || '7',
-                className: decoded.childGrade || 'Lớp 7',
-                avatar: '🚀'
-              };
-              setFamily(prev => ({
-                ...prev,
-                children: [...(prev.children || []), targetChild!]
-              }));
-            }
-            setActiveChildProfile(targetChild);
-            localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
-            if (decoded.parentId) {
-              localStorage.setItem('mindmap_remembered_family_code', decoded.parentId);
-            }
-            setIsIntroOpen(false);
-
-            // Clean URL to keep it pretty
-            const url = new URL(window.location.href);
-            url.searchParams.delete('token');
-            url.searchParams.delete('family');
-            url.searchParams.delete('child');
-            window.history.replaceState({}, '', url.toString());
-          }
-        }
-        
-        const targetFamilyCode = urlFamilyCode || localStorage.getItem('mindmap_remembered_family_code') || family.familyCode;
-        
-        if (targetFamilyCode) {
-          const cloudFam = await fetchFamilyByCodeFromCloud(targetFamilyCode, {
-            signal: controller.signal,
-            timeoutMs: 8000
-          });
-          if (!isCancelled && cloudFam) {
-            setFamily(prev => {
-              const updatedFam = {
-                ...prev,
-                ...cloudFam,
-                children: cloudFam.children && cloudFam.children.length > 0 ? cloudFam.children : prev.children
-              };
-              
-              // Handle Magic Direct Link Auto-login
-              if (urlFamilyCode && urlChildId) {
-                const targetChild = updatedFam.children.find(c => c.id === urlChildId) || updatedFam.children[0];
-                if (targetChild) {
-                  setActiveChildProfile(targetChild);
-                  localStorage.setItem('mindmap_remembered_student_id', targetChild.id);
-                  localStorage.setItem('mindmap_remembered_family_code', targetFamilyCode);
-                  setIsIntroOpen(false);
-                  
-                  // Clean URL to keep it pretty
-                  const url = new URL(window.location.href);
-                  url.searchParams.delete('family');
-                  url.searchParams.delete('child');
-                  window.history.replaceState({}, '', url.toString());
-                }
-              }
-              return updatedFam;
-            });
-          }
-        }
-      } catch (err: any) {
-        if (err?.name === 'AbortError') {
-          console.warn('[Cloud Sync] checkCloudFamily timeout after 8s - fallback to local data');
-        } else {
-          console.error('Error fetching initial cloud family:', err);
-        }
-      } finally {
-        clearTimeout(timeoutId);
-        if (!isCancelled) {
-          setIsCloudLoading(false);
-        }
+        // Clean URL to keep it pretty
+        const url = new URL(window.location.href);
+        url.searchParams.delete('token');
+        url.searchParams.delete('family');
+        url.searchParams.delete('child');
+        window.history.replaceState({}, '', url.toString());
       }
-    };
+    }
 
-    checkCloudFamily();
-    return () => {
-      isCancelled = true;
-      clearTimeout(timeoutId);
-    };
-  }, [isAuthLoading, effectiveUserId, family.familyCode]);
+    setIsCloudLoading(false);
+
+  }, [isAuthLoading, family.children]);
 
   // Profile Hydration Effect (Isolation of Schedules & Study Data)
   useEffect(() => {
