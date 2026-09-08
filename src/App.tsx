@@ -1139,9 +1139,9 @@ const processCloudQueue = async () => {
       /*
        * Không gọi processCloudQueue() đệ quy ngay lập tức.
        *
-       * Cho debounce 15 giây để tiếp tục gom thay đổi.
+       * Cho debounce 1 giây để tiếp tục gom thay đổi.
        */
-      scheduleCloudSave(15000);
+      scheduleCloudSave(1000);
 
     } else {
 
@@ -1173,7 +1173,7 @@ const processCloudQueue = async () => {
         lastCloudSavedSignatureRef.current
     ) {
 
-      scheduleCloudSave(15000);
+      scheduleCloudSave(1000);
 
     } else {
 
@@ -1187,7 +1187,7 @@ const processCloudQueue = async () => {
 // ------------------------------------------------------------
 
 const scheduleCloudSave = (
-  delay = 15000
+  delay = 1000 // Giảm xuống 1 giây để Cloud sync mượt mà tức thì, nhưng vẫn an toàn nhờ queue
 ) => {
 
   if (cloudTimerRef.current) {
@@ -1298,19 +1298,18 @@ useEffect(() => {
   setIsCloudAutoSaving(true);
 
   /*
-   * Mỗi thay đổi reset debounce 15 giây.
+   * Mỗi thay đổi reset debounce 1 giây.
    *
    * A
    * ↓
-   * 5s
    * B
    * ↓
    * reset timer
    * ↓
-   * 15s
+   * 1s
    * Cloud B
    */
-  scheduleCloudSave(15000);
+  scheduleCloudSave(1000);
 
   return () => {
     /*
