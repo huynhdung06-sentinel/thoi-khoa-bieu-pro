@@ -57,7 +57,6 @@ import {
 import { onAuthStateChanged } from 'firebase/auth';
 import { VictoryLightbox } from './components/VictoryLightbox';
 import { ShareModal } from './components/ShareModal';
-import { StudentShareModal } from './components/StudentShareModal';
 import { ParentViewerLoginModal } from './components/ParentViewerLoginModal';
 import html2canvas from 'html2canvas';
 import { toPng, toJpeg } from 'html-to-image';
@@ -240,7 +239,6 @@ export default function App() {
     }
   });
 
-  const [showStudentShareModal, setShowStudentShareModal] = useState(false);
   const [isViewerMode, setIsViewerMode] = useState(false);
   const [viewerStudentProfile, setViewerStudentProfile] = useState<any>(null);
   const [showParentViewerModal, setShowParentViewerModal] = useState(false);
@@ -854,6 +852,7 @@ export default function App() {
     const url = new URL(window.location.href);
     url.searchParams.delete('student');
     window.history.replaceState({}, '', url.toString());
+    setIsIntroOpen(true);
   };
 
   const handleUpdateViewerPassword = async (newPassword: string): Promise<boolean> => {
@@ -2404,7 +2403,6 @@ export default function App() {
         isCloudSyncing={isCloudSyncingManual}
         isCloudAutoSaving={isCloudAutoSaving}
         lastCloudSyncSuccess={lastCloudSyncSuccess}
-        onOpenStudentShare={() => setShowStudentShareModal(true)}
         isViewerMode={isViewerMode}
         viewerStudentName={viewerStudentProfile?.studentName || classInfo.studentName}
         onExitViewerMode={handleExitViewerMode}
@@ -2836,6 +2834,7 @@ export default function App() {
           onExitParentMode={() => {
             setShowParentDashboard(false);
             setCurrentRole('student');
+            setIsIntroOpen(true);
           }}
         />
       )}
@@ -2907,21 +2906,6 @@ export default function App() {
           backupStatus={backupStatus}
         />
       )}
-
-      {/* Modal: Student Share Link & Backup */}
-      <StudentShareModal
-        isOpen={showStudentShareModal}
-        onClose={() => setShowStudentShareModal(false)}
-        studentId={studentId}
-        studentName={classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}
-        avatar={activeChildProfile?.avatar || '👦'}
-        viewerPassword={viewerPassword}
-        onUpdateViewerPassword={handleUpdateViewerPassword}
-        onExportBackupJson={handleExportStudentBackupJson}
-        onImportBackupJson={handleImportStudentBackupJson}
-        onManualSyncCloud={handleManualStudentSyncCloud}
-        isSyncingCloud={isCloudAutoSaving}
-      />
 
       {/* Modal: Parent Viewer Login (1 Link + 1 Password) */}
       {viewerStudentId && (

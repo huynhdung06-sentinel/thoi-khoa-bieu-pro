@@ -84,6 +84,14 @@ export interface LessonReference {
   htmlContent?: string;
 }
 
+export interface LessonGalleryImage {
+  id: string;
+  url: string;
+  title?: string;
+  width?: number;
+  height?: number;
+}
+
 export interface Lesson {
   id: string;
   subjectName: string;
@@ -107,6 +115,7 @@ export interface Lesson {
   sections?: LessonSection[]; // Mục lục & các khối nội dung bài học đa phương tiện
   activeSectionId?: string;
   completedHomeworkImages?: string[]; // Danh sách ảnh chụp bài làm sau khi học xong
+  galleryImages?: LessonGalleryImage[]; // Danh sách hình ảnh tư liệu hiển thị dạng Collage PhotoSwipe v5
   htmlBody?: string; // Nội dung HTML bài học chính nếu có
   embeddedHtmlCode?: string; // Mã hoặc file HTML được kéo thả/nhúng riêng biệt
   embeddedHtmlFileName?: string; // Tên file HTML đã tải/kéo thả

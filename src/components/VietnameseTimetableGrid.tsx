@@ -269,20 +269,8 @@ export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = R
           </span>
         </div>
 
-        {/* Nút Gửi báo cáo cho Ba Mẹ & Nút chuyển đổi Toggle Viewer / Editor */}
+        {/* Nút chuyển đổi Toggle Viewer / Editor */}
         <div className="flex items-center gap-2.5">
-          {onShareReport && (
-            <button
-              type="button"
-              onClick={onShareReport}
-              disabled={isCapturing}
-              className={`flex items-center gap-2 px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 active:scale-95 text-white font-bold text-xs sm:text-sm rounded-lg transition-all shadow-md cursor-pointer shrink-0 ${isCapturing ? 'opacity-70 cursor-wait' : ''}`}
-              title="Chụp ảnh thời khóa biểu và gửi báo cáo cho Ba Mẹ qua Zalo, Messenger, Gmail..."
-            >
-              {isCapturing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Share2 className="w-4 h-4" />}
-              <span>{isCapturing ? 'Đang tạo ảnh...' : 'Gửi báo cáo cho Ba Mẹ'}</span>
-            </button>
-          )}
 
           <div className="inline-flex p-1 bg-slate-100 dark:bg-slate-800/90 rounded-lg border border-slate-200 dark:border-slate-700">
             <button

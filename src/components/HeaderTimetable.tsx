@@ -80,7 +80,6 @@ interface HeaderTimetableProps {
   isCloudSyncing?: boolean;
   isCloudAutoSaving?: boolean;
   lastCloudSyncSuccess?: Date | null;
-  onOpenStudentShare?: () => void;
   isViewerMode?: boolean;
   viewerStudentName?: string;
   onExitViewerMode?: () => void;
@@ -131,7 +130,6 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
   isCloudSyncing = false,
   isCloudAutoSaving = false,
   lastCloudSyncSuccess = null,
-  onOpenStudentShare,
   isViewerMode = false,
   viewerStudentName,
   onExitViewerMode,
@@ -425,41 +423,39 @@ export const HeaderTimetable: React.FC<HeaderTimetableProps> = ({
             </div>
           ) : (
             <>
-              {/* STUDENT / ADMIN MODE: Button Chia Sẻ Cha Mẹ */}
-              {onOpenStudentShare && (
-                <button
-                  type="button"
-                  onClick={onOpenStudentShare}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-700 hover:to-indigo-700 text-white text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95 shrink-0"
-                  title="Lấy 1 Link + Mật khẩu cố định để Cha Mẹ đồng hành xem bài học"
-                >
-                  <Share2 className="w-3.5 h-3.5" />
-                  <span>Chia Sẻ Cha Mẹ 🔗</span>
-                </button>
-              )}
+              {/* NÚT 1: Tải File Sao Lưu (.JSON) */}
+              <button
+                type="button"
+                onClick={onExportData}
+                className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white hover:bg-blue-600 hover:border-blue-600 dark:bg-slate-800/90 dark:hover:bg-blue-600 dark:hover:border-blue-500 text-slate-700 hover:text-white dark:text-slate-200 dark:hover:text-white text-[11px] font-bold tracking-tight transition-all cursor-pointer active:scale-95 shrink-0 shadow-none"
+                title="Tải toàn bộ dữ liệu học tập (thời khóa biểu, bài tập, tiến độ) về máy tính làm file dự phòng (.json)"
+              >
+                <Download className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 group-hover:text-white transition-colors shrink-0" />
+                <span className="hidden sm:inline">Tải File Sao Lưu (.JSON)</span>
+              </button>
 
-              {/* Account & Profile Button */}
+              {/* NÚT 2: Khôi Phục Khi Cài Máy */}
+              <button
+                type="button"
+                onClick={() => fileInputRef.current?.click()}
+                className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700/80 bg-white hover:bg-amber-500 hover:border-amber-500 dark:bg-slate-800/90 dark:hover:bg-amber-500 dark:hover:border-amber-400 text-slate-700 hover:text-white dark:text-slate-200 dark:hover:text-white text-[11px] font-bold tracking-tight transition-all cursor-pointer active:scale-95 shrink-0 shadow-none"
+                title="Chọn file sao lưu .JSON từ máy của bạn để khôi phục lại toàn bộ dữ liệu học tập"
+              >
+                <Upload className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 group-hover:text-white transition-colors shrink-0" />
+                <span className="hidden sm:inline">Khôi Phục Khi Cài Máy</span>
+              </button>
+
+              {/* Account & Profile Button (Compact Gear Button) */}
               <button
                 type="button"
                 onClick={() => {
                   setProfileModalTab('overview');
                   setIsProfileMenuOpen(true);
                 }}
-                className="flex items-center gap-2 px-2.5 sm:px-3 py-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-300 dark:border-emerald-700 shadow-2xs text-xs font-bold text-emerald-900 dark:text-emerald-200 transition-all cursor-pointer active:scale-95 shrink-0 group"
-                title="Bấm để mở Quản lý Tài Khoản, Hồ Sơ Học Sinh & Đổi Người Học 👤"
+                className="p-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 border border-emerald-200/80 dark:border-emerald-800/60 transition-all cursor-pointer shadow-2xs hover:scale-110 active:scale-95 flex items-center justify-center group shrink-0"
+                title={`Quản lý Tài Khoản, Hồ Sơ Học Sinh: ${classInfo.studentName || activeChildProfile?.name || 'Học Sinh'} ⚙️`}
               >
-                <div className="w-6 h-6 rounded-lg bg-emerald-200/80 dark:bg-emerald-800 text-emerald-900 dark:text-emerald-100 flex items-center justify-center text-sm shrink-0 group-hover:scale-110 transition-transform">
-                  {activeChildProfile?.avatar || currentChildAvatar || '👦'}
-                </div>
-                <div className="flex flex-col text-left leading-tight max-w-[100px] sm:max-w-[130px] truncate">
-                  <span className="font-extrabold text-[11px] text-emerald-950 dark:text-emerald-100 truncate">
-                    {classInfo.studentName || activeChildProfile?.name || 'Học Sinh'}
-                  </span>
-                  <span className="text-[10px] text-emerald-700 dark:text-emerald-300 font-semibold truncate flex items-center gap-1">
-                    <span>👤 Tài Khoản</span>
-                  </span>
-                </div>
-                <ChevronDown className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 group-hover:translate-y-0.5 transition-transform shrink-0" />
+                <Settings className="w-6 h-6 text-emerald-600 dark:text-emerald-400 group-hover:rotate-45 transition-transform" />
               </button>
             </>
           )}

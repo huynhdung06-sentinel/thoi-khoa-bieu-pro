@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, Loader2, Upload } from 'lucide-react';
+import { GraduationCap, Users, Loader2, Upload, FileJson } from 'lucide-react';
 
 interface LoginModalProps {
   onGoogleLogin: () => Promise<void>;
@@ -38,16 +38,16 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [currentSlide, setCurrentSlide] = useState(0);
   const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
   
-  // Parent Form States
-  const [studentEmail, setStudentEmail] = useState('');
-  const [parentPassword, setParentPassword] = useState('');
-  const [isParentLoggingIn, setIsParentLoggingIn] = useState(false);
+  // Parent Drag & Drop States
   const [parentError, setParentError] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
-  const handleParentOfflineFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+  const processJsonFile = (file: File) => {
     if (!file) return;
+    if (!file.name.endsWith('.json') && file.type !== 'application/json') {
+      setParentError('Vui lòng chọn hoặc thả đúng tệp có định dạng .json!');
+      return;
+    }
 
     const reader = new FileReader();
     reader.onload = (event) => {
@@ -55,42 +55,46 @@ export const LoginModal: React.FC<LoginModalProps> = ({
         const content = event.target?.result as string;
         const parsed = JSON.parse(content);
         if (parsed && (parsed.appState || parsed.timetableSlots || parsed.classInfo)) {
+          setParentError('');
           if (onParentOfflineImport) {
             onParentOfflineImport(parsed);
           }
         } else {
-          setParentError('File sao lưu không đúng định dạng!');
+          setParentError('Tệp sao lưu không đúng định dạng dữ liệu học tập!');
         }
       } catch (err) {
-        setParentError('Lỗi đọc file sao lưu. Vui lòng chọn đúng file .json!');
+        setParentError('Lỗi đọc tệp sao lưu. Vui lòng kiểm tra lại tệp .json!');
       }
     };
     reader.readAsText(file);
   };
 
-  const handleParentSubmit = async (e: React.FormEvent) => {
+  const handleParentOfflineFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processJsonFile(file);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
     e.preventDefault();
-    if (!studentEmail.trim()) {
-      setParentError('Vui lòng nhập Email của học sinh!');
-      return;
-    }
-    if (!parentPassword.trim()) {
-      setParentError('Vui lòng nhập Mật khẩu xem bài!');
-      return;
-    }
+    e.stopPropagation();
+    setIsDragging(true);
+  };
 
-    setParentError('');
-    setIsParentLoggingIn(true);
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+  };
 
-    try {
-      const res = await onParentLogin(studentEmail.trim(), parentPassword.trim());
-      if (!res.success) {
-        setParentError(res.error || 'Đăng nhập không thành công, vui lòng kiểm tra lại!');
-      }
-    } catch (err: any) {
-      setParentError(err.message || 'Có lỗi kết nối hệ thống. Vui lòng thử lại!');
-    } finally {
-      setIsParentLoggingIn(false);
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) {
+      processJsonFile(file);
     }
   };
 
@@ -236,9 +240,9 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                 </div>
               </div>
             ) : (
-              <form onSubmit={handleParentSubmit} className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
+              <div className="space-y-4 animate-in fade-in slide-in-from-right-4 duration-300">
                 <p className="text-xs text-slate-500 leading-relaxed">
-                  Nhập chính xác <strong>Email Gmail của con</strong> và <strong>Mật khẩu xem bài</strong> (do con cấp hoặc mật khẩu mặc định <code>123456</code>) để đồng hành cùng tiến trình học tập của con.
+                  Phụ huynh có thể theo dõi tiến độ, xem bài học và bảng phân công của con bằng cách nạp tệp báo cáo sao lưu <strong>(.JSON)</strong> từ con.
                 </p>
 
                 {parentError && (
@@ -247,97 +251,64 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                   </div>
                 )}
 
-                {/* Email Input */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-600 flex items-center gap-1.5">
-                    <Mail className="w-3.5 h-3.5 text-slate-400" />
-                    <span>Email của con:</span>
-                  </label>
-                  <input
-                    type="email"
-                    required
-                    value={studentEmail}
-                    onChange={(e) => setStudentEmail(e.target.value)}
-                    placeholder="concuaban@gmail.com"
-                    className="w-full px-4 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-hidden text-sm transition-all placeholder:text-slate-400"
-                  />
-                </div>
+                {/* Hidden File Input */}
+                <input
+                  type="file"
+                  id="parent-offline-import-file"
+                  accept=".json,application/json"
+                  className="hidden"
+                  onChange={handleParentOfflineFileChange}
+                />
 
-                {/* Password Input */}
-                <div className="space-y-1">
-                  <label className="text-xs font-bold text-slate-600 flex items-center justify-between">
-                    <span className="flex items-center gap-1.5">
-                      <Lock className="w-3.5 h-3.5 text-slate-400" />
-                      <span>Mật khẩu xem bài:</span>
-                    </span>
-                  </label>
-                  <div className="relative">
-                    <input
-                      type={showPassword ? 'text' : 'password'}
-                      required
-                      value={parentPassword}
-                      onChange={(e) => setParentPassword(e.target.value)}
-                      placeholder="Mật khẩu của con (Mặc định: 123456)"
-                      className="w-full pl-4 pr-10 py-2.5 rounded-xl border border-slate-200 focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500 outline-hidden text-sm transition-all placeholder:text-slate-400 font-mono"
-                    />
-                    <button
-                      type="button"
-                      onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 cursor-pointer"
-                    >
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
+                {/* Drag & Drop Box */}
+                <div
+                  onDragOver={handleDragOver}
+                  onDragLeave={handleDragLeave}
+                  onDrop={handleDrop}
+                  onClick={() => document.getElementById('parent-offline-import-file')?.click()}
+                  className={`group relative border-2 border-dashed rounded-2xl p-5 text-center cursor-pointer transition-all duration-200 flex flex-col items-center justify-center gap-2.5 ${
+                    isDragging
+                      ? 'border-emerald-500 bg-emerald-100/70 scale-[1.01] shadow-inner'
+                      : 'border-emerald-200 hover:border-emerald-400 bg-emerald-50/50 hover:bg-emerald-50/90'
+                  }`}
+                >
+                  <div className="w-12 h-12 rounded-2xl bg-white text-emerald-600 shadow-sm border border-emerald-100 flex items-center justify-center transition-transform group-hover:scale-105">
+                    <FileJson className="w-6 h-6 text-emerald-600" />
+                  </div>
+
+                  <div className="space-y-1">
+                    <p className="text-xs font-bold text-slate-700">
+                      Kéo &amp; thả tệp <span className="text-emerald-700 font-mono font-extrabold">.json</span> vào đây
+                    </p>
+                    <p className="text-[11px] text-slate-400 font-medium">
+                      hoặc chạm vào đây để duyệt file từ thiết bị
+                    </p>
                   </div>
                 </div>
 
-                {/* Submit button */}
+                {/* Prominent Action Button */}
                 <button
-                  type="submit"
-                  disabled={isParentLoggingIn}
-                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-teal-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm shadow-md shadow-emerald-100 hover:shadow-emerald-200 transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer disabled:opacity-75"
+                  type="button"
+                  onClick={() => document.getElementById('parent-offline-import-file')?.click()}
+                  className="w-full py-3.5 px-5 rounded-2xl bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-700 hover:from-emerald-700 hover:to-teal-800 text-white font-bold text-sm shadow-md shadow-emerald-200/80 hover:shadow-emerald-300 transition-all duration-200 flex items-center justify-center gap-2.5 cursor-pointer active:scale-[0.98]"
                 >
-                  {isParentLoggingIn ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      <span>Đang kết nối không gian của con...</span>
-                    </>
-                  ) : (
-                    <span>Đăng Nhập Xem Tiến Độ</span>
-                  )}
+                  <Upload className="w-4 h-4 text-white shrink-0" />
+                  <span>Xem Tiến Độ Từ File (.JSON)</span>
                 </button>
 
-                {/* Hoặc Nhập File Báo Cáo Offline */}
-                <div className="relative flex py-2 items-center">
-                  <div className="flex-grow border-t border-slate-200"></div>
-                  <span className="flex-shrink mx-3 text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hoặc xem Offline</span>
-                  <div className="flex-grow border-t border-slate-200"></div>
+                <div className="pt-1 text-center">
+                  <p className="text-[10px] text-slate-400">
+                    Bảo mật tuyệt đối 100% • Dữ liệu đọc trực tiếp trên máy của bạn
+                  </p>
                 </div>
-
-                <div>
-                  <input
-                    type="file"
-                    id="parent-offline-import-file"
-                    accept=".json"
-                    className="hidden"
-                    onChange={handleParentOfflineFileChange}
-                  />
-                  <button
-                    type="button"
-                    onClick={() => document.getElementById('parent-offline-import-file')?.click()}
-                    className="w-full py-3 px-5 rounded-2xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
-                  >
-                    <Upload className="w-4 h-4 text-indigo-600 shrink-0" />
-                    <span>Xem Tiến Độ Từ File (.JSON)</span>
-                  </button>
-                </div>
-              </form>
+              </div>
             )}
           </div>
 
           {/* Footer note */}
           <div className="pt-2 text-center border-t border-slate-100">
             <p className="text-[10px] text-slate-400">
-              Công cụ hỗ trợ học tập trực quan &amp; Độc lập cho học sinh cấp 2.
+              Công cụ hỗ trợ học tập trực quan &amp; thiết thực cho học sinh - sinh viên.
             </p>
           </div>
 

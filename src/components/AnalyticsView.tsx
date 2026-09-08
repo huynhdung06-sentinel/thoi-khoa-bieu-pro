@@ -331,19 +331,7 @@ export const AnalyticsView: React.FC<AnalyticsViewProps> = ({
   return (
     <div className="space-y-4 text-slate-800 dark:text-slate-200">
       
-      {/* ======================================================== */}
-      {/* 1. KHỐI GIÁM SÁT TIẾN ĐỘ HÔM NAY (DÀNH CHO PHỤ HUYNH) */}
-      {/* ======================================================== */}
-      <div className="flex justify-end mb-2">
-        <button
-          onClick={handleShareReport}
-          disabled={isSharing}
-          className="flex items-center gap-2 px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50"
-        >
-          <Share2 className="w-4 h-4" />
-          <span>{isSharing ? 'Đang tạo ảnh...' : 'Gửi báo cáo cho Ba Mẹ'}</span>
-        </button>
-      </div>
+
 
       <div ref={captureRef} className="bg-white dark:bg-[#161922] border border-slate-200 dark:border-slate-800 rounded-2xl p-4 sm:p-6 shadow-xs space-y-4">
         

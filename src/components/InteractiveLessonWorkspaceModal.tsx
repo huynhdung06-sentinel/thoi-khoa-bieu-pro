@@ -6,7 +6,8 @@ import {
   UserRole, 
   StudyRecord, 
   TimetableSlot, 
-  LessonPlan 
+  LessonPlan,
+  LessonGalleryImage
 } from '../types';
 import { getSubjectEmoji, SUBJECTS_LIST } from '../data/mockData';
 import { compressImageToDataUrl } from '../utils/imageUtils';
@@ -93,6 +94,7 @@ import { TocSidebarPanel } from './lesson-workspace/TocSidebarPanel';
 import { EmbeddedHtmlWorkspacePanel } from './lesson-workspace/EmbeddedHtmlWorkspacePanel';
 import { AllYoutubeVideosWorkspacePanel } from './lesson-workspace/AllYoutubeVideosWorkspacePanel';
 import { HomeworkDocumentWorkspacePanel } from './lesson-workspace/HomeworkDocumentWorkspacePanel';
+import { CollageImageGalleryPanel } from './lesson-workspace/CollageImageGalleryPanel';
 
 export interface TocItem {
   id: string;
@@ -135,7 +137,7 @@ interface InteractiveLessonWorkspaceModalProps {
   } | null;
   onCompleteLessonWithPhotos?: (lesson: Lesson, images: string[], note?: string) => void;
   onDeleteRecord?: (recordId: string) => void;
-  initialSourceType?: 'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page';
+  initialSourceType?: 'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page' | 'gallery_image';
   onUnsavedChangesChange?: (hasUnsaved: boolean) => void;
   requestExitSignal?: number;
 }
@@ -209,8 +211,16 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
   const [workspaceMode, setWorkspaceMode] = useState<'edit' | 'view'>('view');
   
   // 🌟 TOP HEADER SOURCE SELECTION TABS:
-  // 'html': Soạn bài viết | 'embedded_html': Nhúng File HTML | 'youtube': Video YT | 'homework_image': Ảnh bài nộp | 'pdf_page': SGK PDF
-  const [selectedSourceType, setSelectedSourceType] = useState<'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page'>('html');
+  // 'html': Soạn bài viết | 'embedded_html': Nhúng File HTML | 'youtube': Video YT | 'homework_image': Ảnh bài nộp | 'pdf_page': SGK PDF | 'gallery_image': Thư viện Ảnh Collage
+  const [selectedSourceType, setSelectedSourceType] = useState<'html' | 'embedded_html' | 'youtube' | 'homework_image' | 'pdf_page' | 'gallery_image'>('html');
+  
+  // 6. Thư viện hình ảnh Collage PhotoSwipe v5
+  const [galleryImages, setGalleryImages] = useState<LessonGalleryImage[]>(() => {
+    if (lesson.galleryImages && lesson.galleryImages.length > 0) {
+      return lesson.galleryImages;
+    }
+    return [];
+  });
   
   // HTML Editor Sub-mode: 'visual' (WYSIWYG) vs 'code' (Raw HTML)
   const [htmlEditorMode, setHtmlEditorMode] = useState<'visual' | 'code'>('visual');
@@ -490,6 +500,7 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
       setPdfPageEnd(lesson.pdfEndPage || startP + 4);
       setPdfCurrentViewPage(startP);
       setHomeworkImages(lesson.completedHomeworkImages || []);
+      setGalleryImages(lesson.galleryImages || []);
       
       // Initialize Textbook Links (Drive, Cloud, OneDrive, Hành Trang Số...)
       let initialLinks: TextbookLinkItem[] = [];
@@ -522,6 +533,9 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
       setCurrentLesson(lesson);
       if (lesson.completedHomeworkImages) {
         setHomeworkImages(lesson.completedHomeworkImages);
+      }
+      if (lesson.galleryImages) {
+        setGalleryImages(lesson.galleryImages);
       }
       if (lesson.textbookLinks) {
         setTextbookLinks(lesson.textbookLinks);
@@ -1201,6 +1215,7 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
       pdfStorageKey: getPdfStorageKey(pdfScopeMode),
       masterDocumentUrl: textbookLinks[0]?.url || largePdfBlobUrl || currentLesson.masterDocumentUrl,
       completedHomeworkImages: homeworkImages,
+      galleryImages: galleryImages,
       sections: generatedSections
     };
 
@@ -1372,7 +1387,28 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
 
             <span className="w-px h-3.5 bg-blue-300/70 dark:bg-blue-600/50 self-center shrink-0 mx-0.5" aria-hidden="true" />
 
-            {/* 5. Nộp Báo Cáo Học Bài */}
+            {/* 5. Thư viện Hình Ảnh (Collage PhotoSwipe v5) */}
+            <button
+              type="button"
+              onClick={() => setSelectedSourceType('gallery_image')}
+              className={`px-3 py-1.5 rounded-lg transition-all duration-200 cursor-pointer shrink-0 flex items-center gap-1.5 active:scale-[0.98] ${
+                selectedSourceType === 'gallery_image'
+                  ? 'bg-white dark:bg-slate-700 text-blue-700 dark:text-blue-300 shadow-2xs font-bold'
+                  : 'text-slate-700 dark:text-slate-300 hover:text-blue-700 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-950/60 font-medium'
+              }`}
+            >
+              <ImageIcon className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+              <span>Hình Ảnh</span>
+              {galleryImages.length > 0 && (
+                <span className="ml-0.5 px-1.5 py-0.5 text-[10px] bg-blue-100 dark:bg-blue-900/70 text-blue-800 dark:text-blue-200 rounded-full font-bold">
+                  {galleryImages.length}
+                </span>
+              )}
+            </button>
+
+            <span className="w-px h-3.5 bg-blue-300/70 dark:bg-blue-600/50 self-center shrink-0 mx-0.5" aria-hidden="true" />
+
+            {/* 6. Nộp Báo Cáo Học Bài */}
             <button
               type="button"
               onClick={() => setSelectedSourceType('homework_image')}
@@ -2008,6 +2044,27 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
                   )}
 
                 </div>
+              )}
+
+              {/* =================================================================== */}
+              {/* 📸 F. TAB MỚI: THƯ VIỆN HÌNH ẢNH BỐ CỤC COLLAGE & PHOTOSWIPE V5      */}
+              {/* =================================================================== */}
+              {selectedSourceType === 'gallery_image' && (
+                <CollageImageGalleryPanel
+                  images={galleryImages}
+                  workspaceMode={workspaceMode}
+                  lessonTitle={editingTitle || currentLesson.title}
+                  subjectName={currentLesson.subjectName}
+                  onUpdateImages={(updatedImages) => {
+                    setGalleryImages(updatedImages);
+                    const updated = {
+                      ...currentLesson,
+                      galleryImages: updatedImages,
+                    };
+                    setCurrentLesson(updated);
+                    onSaveLesson(updated);
+                  }}
+                />
               )}
             </div>
           </div>
