@@ -1,10 +1,11 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, Loader2 } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, GraduationCap, Users, Loader2, Upload } from 'lucide-react';
 
 interface LoginModalProps {
   onGoogleLogin: () => Promise<void>;
   isLoggingIn?: boolean;
   onParentLogin: (studentEmail: string, passwordInput: string) => Promise<{ success: boolean; error?: string }>;
+  onParentOfflineImport?: (fileData: any) => void;
 }
 
 const SLIDES = [
@@ -32,6 +33,7 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onGoogleLogin,
   isLoggingIn = false,
   onParentLogin,
+  onParentOfflineImport,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
   const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
@@ -42,6 +44,29 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   const [isParentLoggingIn, setIsParentLoggingIn] = useState(false);
   const [parentError, setParentError] = useState('');
   const [showPassword, setShowPassword] = useState(false);
+
+  const handleParentOfflineFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      try {
+        const content = event.target?.result as string;
+        const parsed = JSON.parse(content);
+        if (parsed && (parsed.appState || parsed.timetableSlots || parsed.classInfo)) {
+          if (onParentOfflineImport) {
+            onParentOfflineImport(parsed);
+          }
+        } else {
+          setParentError('File sao lưu không đúng định dạng!');
+        }
+      } catch (err) {
+        setParentError('Lỗi đọc file sao lưu. Vui lòng chọn đúng file .json!');
+      }
+    };
+    reader.readAsText(file);
+  };
 
   const handleParentSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -280,6 +305,31 @@ export const LoginModal: React.FC<LoginModalProps> = ({
                     <span>Đăng Nhập Xem Tiến Độ</span>
                   )}
                 </button>
+
+                {/* Hoặc Nhập File Báo Cáo Offline */}
+                <div className="relative flex py-2 items-center">
+                  <div className="flex-grow border-t border-slate-200"></div>
+                  <span className="flex-shrink mx-3 text-slate-400 text-[10px] font-bold uppercase tracking-wider">Hoặc xem Offline</span>
+                  <div className="flex-grow border-t border-slate-200"></div>
+                </div>
+
+                <div>
+                  <input
+                    type="file"
+                    id="parent-offline-import-file"
+                    accept=".json"
+                    className="hidden"
+                    onChange={handleParentOfflineFileChange}
+                  />
+                  <button
+                    type="button"
+                    onClick={() => document.getElementById('parent-offline-import-file')?.click()}
+                    className="w-full py-3 px-5 rounded-2xl bg-slate-50 hover:bg-indigo-50 border border-slate-200 hover:border-indigo-300 text-slate-700 font-bold text-sm transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer"
+                  >
+                    <Upload className="w-4 h-4 text-indigo-600 shrink-0" />
+                    <span>Xem Tiến Độ Từ File (.JSON)</span>
+                  </button>
+                </div>
               </form>
             )}
           </div>

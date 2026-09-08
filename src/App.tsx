@@ -814,14 +814,30 @@ export default function App() {
     if (famCode && childId) {
       const unsubFam = subscribeChildDataByCode(famCode, childId, (realtimeData) => {
         if (realtimeData && isHydrated && !isHydratingRef.current) {
-          if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
-          if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
-          if (realtimeData.subjects) setSubjects(realtimeData.subjects);
-          if (realtimeData.lessons) setLessons(realtimeData.lessons);
-          if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
-          if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
-          if (realtimeData.documents) setDocuments(realtimeData.documents);
-          if (realtimeData.periods) setPeriods(realtimeData.periods);
+          if (realtimeData.timetableSlots) {
+            setTimetableSlots((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.timetableSlots) ? prev : realtimeData.timetableSlots);
+          }
+          if (realtimeData.classInfo) {
+            setClassInfo((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.classInfo) ? prev : realtimeData.classInfo);
+          }
+          if (realtimeData.subjects) {
+            setSubjects((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.subjects) ? prev : realtimeData.subjects);
+          }
+          if (realtimeData.lessons) {
+            setLessons((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessons) ? prev : realtimeData.lessons);
+          }
+          if (realtimeData.lessonPlans) {
+            setLessonPlans((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessonPlans) ? prev : realtimeData.lessonPlans);
+          }
+          if (realtimeData.studyRecords) {
+            setStudyRecords((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.studyRecords) ? prev : realtimeData.studyRecords);
+          }
+          if (realtimeData.documents) {
+            setDocuments((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.documents) ? prev : realtimeData.documents);
+          }
+          if (realtimeData.periods) {
+            setPeriods((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.periods) ? prev : realtimeData.periods);
+          }
         }
       });
       unsubs.push(unsubFam);
@@ -1025,14 +1041,30 @@ export default function App() {
     if (!isViewerMode || !viewerStudentId) return;
     const unsubscribe = subscribeStudentWorkspace(viewerStudentId, (realtimeData) => {
       if (realtimeData) {
-        if (realtimeData.timetableSlots) setTimetableSlots(realtimeData.timetableSlots);
-        if (realtimeData.classInfo) setClassInfo(realtimeData.classInfo);
-        if (realtimeData.subjects) setSubjects(realtimeData.subjects);
-        if (realtimeData.lessons) setLessons(realtimeData.lessons);
-        if (realtimeData.lessonPlans) setLessonPlans(realtimeData.lessonPlans);
-        if (realtimeData.studyRecords) setStudyRecords(realtimeData.studyRecords);
-        if (realtimeData.documents) setDocuments(realtimeData.documents);
-        if (realtimeData.periods) setPeriods(realtimeData.periods);
+        if (realtimeData.timetableSlots) {
+          setTimetableSlots((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.timetableSlots) ? prev : realtimeData.timetableSlots);
+        }
+        if (realtimeData.classInfo) {
+          setClassInfo((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.classInfo) ? prev : realtimeData.classInfo);
+        }
+        if (realtimeData.subjects) {
+          setSubjects((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.subjects) ? prev : realtimeData.subjects);
+        }
+        if (realtimeData.lessons) {
+          setLessons((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessons) ? prev : realtimeData.lessons);
+        }
+        if (realtimeData.lessonPlans) {
+          setLessonPlans((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.lessonPlans) ? prev : realtimeData.lessonPlans);
+        }
+        if (realtimeData.studyRecords) {
+          setStudyRecords((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.studyRecords) ? prev : realtimeData.studyRecords);
+        }
+        if (realtimeData.documents) {
+          setDocuments((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.documents) ? prev : realtimeData.documents);
+        }
+        if (realtimeData.periods) {
+          setPeriods((prev) => JSON.stringify(prev) === JSON.stringify(realtimeData.periods) ? prev : realtimeData.periods);
+        }
       }
     });
     return () => unsubscribe();
@@ -1347,6 +1379,45 @@ export default function App() {
     } catch (err: any) {
       console.error('Error in parent email login:', err);
       return { success: false, error: err.message || 'Lỗi kết nối máy chủ' };
+    }
+  };
+
+  const handleParentOfflineDataLoad = (backupData: any) => {
+    try {
+      const data = backupData.appState || backupData;
+      if (!data) {
+        alert('File không chứa dữ liệu học tập hợp lệ!');
+        return;
+      }
+
+      setIsViewerMode(true);
+      setCurrentRole('viewer');
+      
+      setViewerStudentProfile({
+        id: backupData.studentId || 'offline_student',
+        name: backupData.studentName || data.classInfo?.studentName || 'Học Sinh Offline',
+        grade: backupData.grade || data.classInfo?.className || 'Lớp 6A',
+        avatar: backupData.avatar || '👦',
+      });
+
+      if (data.classInfo) setClassInfo(data.classInfo);
+      if (data.subjects) setSubjects(data.subjects);
+      if (data.timetableSlots) setTimetableSlots(data.timetableSlots);
+      if (data.periods) setPeriods(data.periods);
+      if (data.lessons) setLessons(data.lessons);
+      if (data.lessonPlans) setLessonPlans(data.lessonPlans);
+      if (data.studyRecords) setStudyRecords(data.studyRecords);
+      if (data.documents) setDocuments(data.documents);
+
+      setIsIntroOpen(false);
+      
+      try {
+        confetti();
+      } catch {}
+      alert('Tải báo cáo học tập offline thành công! Bạn đang xem thông tin trực quan từ file.');
+    } catch (err) {
+      console.error('Error loading parent offline JSON:', err);
+      alert('Có lỗi xảy ra khi nạp file báo cáo offline!');
     }
   };
 
@@ -2513,6 +2584,7 @@ export default function App() {
         onGoogleLogin={handleGoogleLogin}
         isLoggingIn={isGoogleLoggingIn}
         onParentLogin={handleParentEmailLogin}
+        onParentOfflineImport={handleParentOfflineDataLoad}
       />
     );
   }
