@@ -580,6 +580,11 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
       color: #1e3a8a;
     }
 
+    .custom-scrollbar::-webkit-scrollbar { width: 5px; }
+    .custom-scrollbar::-webkit-scrollbar-track { background: transparent; }
+    .custom-scrollbar::-webkit-scrollbar-thumb { background: #e2e8f0; border-radius: 10px; }
+    .custom-scrollbar::-webkit-scrollbar-thumb:hover { background: #cbd5e1; }
+
     @page {
       size: A4 portrait;
       margin: 15mm;
@@ -670,19 +675,19 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
   <div class="app-wrapper flex-1 w-[94%] sm:w-[88%] lg:w-[82%] mx-auto py-5 flex flex-col md:flex-row gap-6 items-start">
     
     <!-- LEFT SIDEBAR: DANH SÁCH BÀI HỌC (NO-PRINT) -->
-    <aside id="sidebar-pane" class="no-print w-full md:w-[320px] shrink-0 bg-white rounded-2xl border border-slate-200/90 shadow-sm flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sticky top-[76px]">
+    <aside id="sidebar-pane" class="no-print w-full md:w-[280px] lg:w-[300px] shrink-0 bg-white rounded-xl border border-slate-200/80 shadow-sm flex flex-col overflow-hidden max-h-[calc(100vh-85px)] sticky top-[76px]">
       <!-- Chapter Tree Navigation -->
-      <div id="tree-container" class="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+      <div id="tree-container" class="flex-1 overflow-y-auto py-2 custom-scrollbar">
         <!-- Dynamic Chapter Accordions -->
       </div>
 
       <!-- Sidebar Footer -->
-      <div id="sidebar-footer" class="p-2.5 px-3 bg-slate-50/90 border-t border-slate-100 text-[11px] text-slate-500 flex items-center justify-between shrink-0">
-        <span>Tổng: <strong id="total-lessons-count">0</strong> bài</span>
-        <span class="text-emerald-600 font-bold flex items-center gap-1.5">
-          <span class="w-3.5 h-3.5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center text-[10px] font-bold">✓</span>
-          <span>Đã học: <span id="done-lessons-count">0</span></span>
-        </span>
+      <div id="sidebar-footer" class="p-3 bg-slate-50 border-t border-slate-100 text-[10px] uppercase tracking-wider text-slate-400 flex items-center justify-between shrink-0">
+        <span>Tiến độ: <strong id="progress-text">0/0</strong> bài</span>
+        <div class="flex items-center gap-1.5">
+          <span class="w-2 h-2 rounded-full bg-emerald-500"></span>
+          <span>Đã học</span>
+        </div>
       </div>
     </aside>
 
@@ -742,40 +747,39 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
       let totalLessons = 0;
       let doneLessons = 0;
 
+      if (CHAPTER_DATA.length === 0) {
+        container.innerHTML = \`
+          <div class="py-12 text-center text-xs text-slate-400">
+            <svg class="w-8 h-8 mx-auto mb-2 opacity-20" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18 18.247 18.477 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+            <span>Trống dữ liệu</span>
+          </div>
+        \`;
+        return;
+      }
+
+      html = '<ol class="space-y-0.5">';
       CHAPTER_DATA.forEach((ch, chIdx) => {
         totalLessons += ch.lessons.length;
         const isExpanded = !collapsedChapters[chIdx];
 
         html += \`
-          <div class="space-y-1">
+          <li>
             <!-- CHƯƠNG -->
-            <button 
-              type="button"
+            <div 
               onclick="toggleChapterAccordion('\${chIdx}')" 
-              class="w-full px-3 py-2 text-left flex items-center justify-between transition cursor-pointer group rounded-xl border shadow-2xs \${
-                isExpanded
-                  ? 'bg-slate-100/90 border-slate-200 text-slate-900'
-                  : 'bg-slate-50 hover:bg-slate-100/80 border-slate-200/70 text-slate-700'
+              class="group flex items-center gap-2 px-4 py-2 hover:bg-blue-50 hover:text-blue-600 cursor-pointer transition-colors \${
+                isExpanded ? 'text-slate-900 font-bold' : 'text-slate-600'
               }"
-              title="\${ch.chapterName}"
             >
-              <div class="flex items-center gap-2 min-w-0 pr-1">
-                <span class="transition-colors shrink-0 \${isExpanded ? 'text-blue-600' : 'text-slate-400 group-hover:text-blue-600'}">
-                  \${isExpanded ? \`
-                    <svg class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
-                  \` : \`
-                    <svg class="w-4 h-4 stroke-[2.5]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" d="m8.25 4.5 7.5 7.5-7.5 7.5"/></svg>
-                  \`}
-                </span>
-                <span class="truncate font-bold text-xs sm:text-[13px] tracking-tight">\${ch.chapterName}</span>
-              </div>
-              <span class="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ml-1.5 bg-slate-200/70 text-slate-600">
-                \${ch.lessons.length} bài
+              <span class="transition-transform duration-200 shrink-0 \${isExpanded ? 'rotate-0 text-blue-500' : '-rotate-90 text-slate-400'}">
+                <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="m19.5 8.25-7.5 7.5-7.5-7.5"/></svg>
               </span>
-            </button>
+              <span class="truncate font-bold text-[15px] leading-relaxed">\${ch.chapterName}</span>
+              <span class="text-[10px] text-slate-400 ml-auto font-medium">\${ch.lessons.length}</span>
+            </div>
 
             <!-- DANH SÁCH BÀI -->
-            <div id="ch-body-\${chIdx}" class="pl-3.5 pr-1 py-0.5 space-y-1 \${isExpanded ? '' : 'hidden'}">
+            <ol class="mt-0.5 mb-1 \${isExpanded ? '' : 'hidden'}">
               \${ch.lessons.map(l => {
                 const isActive = (currentActiveId === l.id);
                 const localData = getLocalLessonData(l.id);
@@ -785,50 +789,44 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
                 if (isDone) doneLessons++;
 
                 return \`
-                  <button 
-                    type="button"
-                    onclick="selectLesson('\${l.id}')"
-                    class="w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between gap-2 cursor-pointer \${
-                      isActive
-                        ? 'bg-blue-600 text-white font-bold shadow-xs'
-                        : 'text-slate-700 hover:bg-blue-50/70 hover:text-blue-700 font-medium'
-                    }"
-                    title="\${isDone ? l.title + ' (Đã học)' : l.title}"
-                  >
-                    <div class="flex items-center gap-2 truncate min-w-0">
-                      \${isDone ? \`
-                        <span class="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 \${
-                          isActive ? 'bg-white/20 text-white' : 'bg-emerald-100 text-emerald-600'
-                        }" title="Đã học">
-                          ✓
-                        </span>
-                      \` : \`
-                        <span class="w-4 h-4 flex items-center justify-center text-sm font-bold shrink-0 \${
-                          isActive ? 'text-blue-200' : 'text-slate-300'
-                        }">
-                          •
-                        </span>
-                      \`}
+                  <li>
+                    <button 
+                      type="button"
+                      onclick="selectLesson('\${l.id}')"
+                      class="w-full text-left pl-10 pr-4 py-1.5 text-[14px] leading-snug transition-all flex items-center gap-2.5 cursor-pointer relative \${
+                        isActive
+                          ? 'bg-blue-50 text-blue-700 font-bold border-r-2 border-blue-600'
+                          : 'text-slate-600 hover:text-blue-600 hover:bg-blue-50 font-medium'
+                      }"
+                    >
+                      <!-- Minimal Status Indicator -->
+                      <div class="w-1.5 h-1.5 rounded-full shrink-0 transition-colors \${
+                        isDone 
+                          ? 'bg-emerald-500' 
+                          : isActive
+                            ? 'bg-blue-500'
+                            : 'bg-slate-200'
+                      }"></div>
+                      
                       <span class="truncate">\${l.title}</span>
-                    </div>
-                  </button>
+                      
+                      \${isDone && !isActive ? \`
+                        <svg class="w-3 h-3 text-emerald-500 ml-auto shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="m4.5 12.75 6 6 9-13.5"/></svg>
+                      \` : ''}
+                    </button>
+                  </li>
                 \`;
               }).join('')}
-            </div>
-          </div>
+            </ol>
+          </li>
         \`;
       });
-
-      if (!html) {
-        html = '<div class="p-4 text-center text-xs text-slate-400">Không có bài học nào.</div>';
-      }
+      html += '</ol>';
 
       container.innerHTML = html;
 
-      const totalEl = document.getElementById('total-lessons-count');
-      const doneEl = document.getElementById('done-lessons-count');
-      if (totalEl) totalEl.textContent = totalLessons;
-      if (doneEl) doneEl.textContent = doneLessons;
+      const progressTextEl = document.getElementById('progress-text');
+      if (progressTextEl) progressTextEl.textContent = \`\${doneLessons}/\${totalLessons}\`;
     }
 
     function toggleChapterAccordion(chIdx) {
@@ -1447,109 +1445,93 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
       <div className="app-wrapper flex-1 min-h-0 w-full mx-auto flex flex-col md:flex-row gap-4 items-stretch overflow-hidden">
         
         {/* LEFT SIDEBAR: LOCKED FRAME WITH INTERNAL CHAPTER LIST SCROLL (NO-PRINT) */}
-        <aside id="sidebar-pane" className="no-print w-full md:w-[290px] lg:w-[320px] shrink-0 h-[240px] md:h-full bg-white dark:bg-slate-850 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-xs flex flex-col overflow-hidden">
+        <aside id="sidebar-pane" className="no-print w-full md:w-[280px] lg:w-[300px] shrink-0 h-[240px] md:h-full bg-white dark:bg-[#0f172a] rounded-xl border border-slate-200/80 dark:border-slate-800 shadow-sm flex flex-col overflow-hidden">
           {/* Chapter Tree Navigation */}
-          <div id="tree-container" className="flex-1 overflow-y-auto p-2.5 space-y-2.5">
+          <div id="tree-container" className="flex-1 overflow-y-auto py-2 custom-scrollbar">
             {filteredChapters.length === 0 ? (
-              <div className="py-8 text-center text-xs text-slate-400">
-                <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-30" />
-                <span>Không có bài học nào khớp với bộ lọc</span>
+              <div className="py-12 text-center text-xs text-slate-400">
+                <BookOpen className="w-8 h-8 mx-auto mb-2 opacity-20" />
+                <span>Trống dữ liệu</span>
               </div>
             ) : (
-              filteredChapters.map((chGroup, idx) => {
-                const isExpanded = expandedChapters[chGroup.chapterName] !== false;
+              <ol className="space-y-0.5">
+                {filteredChapters.map((chGroup, idx) => {
+                  const isExpanded = expandedChapters[chGroup.chapterName] !== false;
 
-                return (
-                  <div key={`ch-group-${chGroup.chapterName}-${idx}`} className="space-y-1">
-                    {/* CHƯƠNG */}
-                    <button
-                      type="button"
-                      onClick={() => toggleChapter(chGroup.chapterName)}
-                      className={`w-full px-3 py-2 text-left flex items-center justify-between transition cursor-pointer group rounded-xl border shadow-2xs ${
-                        isExpanded
-                          ? 'bg-slate-100/90 dark:bg-slate-800/90 border-slate-200 dark:border-slate-700/80 text-slate-900 dark:text-white'
-                          : 'bg-slate-50 dark:bg-slate-800/60 hover:bg-slate-100/80 dark:hover:bg-slate-800 border-slate-200/70 dark:border-slate-750 text-slate-700 dark:text-slate-200'
-                      }`}
-                      title={chGroup.chapterName}
-                    >
-                      <div className="flex items-center gap-2 min-w-0 pr-1">
-                        <span className={`transition-colors shrink-0 ${isExpanded ? 'text-blue-600 dark:text-blue-400' : 'text-slate-400 dark:text-slate-500 group-hover:text-blue-600'}`}>
-                          {isExpanded ? (
-                            <ChevronDown className="w-4 h-4 stroke-[2.5]" />
-                          ) : (
-                            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                          )}
+                  return (
+                    <li key={`ch-group-${chGroup.chapterName}-${idx}`}>
+                      {/* CHƯƠNG (Summary style) */}
+                      <div 
+                        className={`group flex items-center gap-2 px-4 py-2 hover:bg-blue-50 dark:hover:bg-blue-900/20 hover:text-blue-600 dark:hover:text-blue-400 cursor-pointer transition-colors ${
+                          isExpanded ? 'text-slate-900 dark:text-white' : 'text-slate-600 dark:text-slate-400'
+                        }`}
+                        onClick={() => toggleChapter(chGroup.chapterName)}
+                      >
+                        <span className={`transition-transform duration-200 shrink-0 ${isExpanded ? 'rotate-0 text-blue-500' : '-rotate-90 text-slate-400'}`}>
+                          <ChevronDown className="w-3.5 h-3.5" />
                         </span>
-                        <span className="truncate font-bold text-xs sm:text-[13px] tracking-tight">
+                        <span className="truncate font-bold text-[15px] leading-relaxed">
                           {chGroup.chapterName}
                         </span>
+                        <span className="text-[10px] text-slate-400 dark:text-slate-500 ml-auto font-medium">
+                          {chGroup.lessons.length}
+                        </span>
                       </div>
-                      <span className="text-[10px] font-medium px-2 py-0.5 rounded-full shrink-0 ml-1.5 bg-slate-200/70 dark:bg-slate-700/70 text-slate-600 dark:text-slate-300">
-                        {chGroup.lessons.length} bài
-                      </span>
-                    </button>
 
-                    {/* DANH SÁCH BÀI */}
-                    {isExpanded && (
-                      <div id={`ch-body-${idx}`} className="pl-3.5 pr-1 py-0.5 space-y-1">
-                        {chGroup.lessons.map((lesson, lIdx) => {
-                          const isSelected = activeLessonId === lesson.id;
-                          const scanned = scanLessonData(lesson);
-                          const isDone = scanned.isCompleted;
+                      {/* DANH SÁCH BÀI (Nested List) */}
+                      {isExpanded && (
+                        <ol className="mt-0.5 mb-1">
+                          {chGroup.lessons.map((lesson, lIdx) => {
+                            const isSelected = activeLessonId === lesson.id;
+                            const scanned = scanLessonData(lesson);
+                            const isDone = scanned.isCompleted;
 
-                          return (
-                            <button
-                              key={`sidebar-lesson-${lesson.id || lesson.title}-${lIdx}`}
-                              type="button"
-                              onClick={() => handleSelectLesson(lesson)}
-                              className={`w-full text-left px-2.5 py-1.5 rounded-lg text-xs transition flex items-center justify-between gap-2 cursor-pointer ${
-                                isSelected && viewMode === 'interactive'
-                                  ? 'bg-blue-600 text-white font-bold shadow-xs'
-                                  : 'text-slate-700 dark:text-slate-300 hover:bg-blue-50/70 dark:hover:bg-slate-800/70 hover:text-blue-700 dark:hover:text-blue-300 font-medium'
-                              }`}
-                              title={isDone ? `${lesson.title} (Đã học)` : lesson.title}
-                            >
-                              <div className="flex items-center gap-2 truncate min-w-0">
-                                {isDone ? (
-                                  <span 
-                                    className={`w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-extrabold shrink-0 ${
-                                      isSelected && viewMode === 'interactive'
-                                        ? 'bg-white/20 text-white'
-                                        : 'bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400'
-                                    }`}
-                                    title="Đã học"
-                                  >
-                                    ✓
-                                  </span>
-                                ) : (
-                                  <span 
-                                    className={`w-4 h-4 flex items-center justify-center text-sm font-bold shrink-0 ${
-                                      isSelected && viewMode === 'interactive' ? 'text-blue-200' : 'text-slate-300 dark:text-slate-600'
-                                    }`}
-                                  >
-                                    •
-                                  </span>
-                                )}
-                                <span className="truncate">{lesson.title}</span>
-                              </div>
-                            </button>
-                          );
-                        })}
-                      </div>
-                    )}
-                  </div>
-                );
-              })
+                            return (
+                              <li key={`sidebar-lesson-${lesson.id || lesson.title}-${lIdx}`}>
+                                <button
+                                  type="button"
+                                  onClick={() => handleSelectLesson(lesson)}
+                                  className={`w-full text-left pl-10 pr-4 py-1.5 text-[14px] leading-snug transition-all flex items-center gap-2.5 cursor-pointer relative ${
+                                    isSelected && viewMode === 'interactive'
+                                      ? 'bg-blue-50/80 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 font-bold border-r-2 border-blue-600'
+                                      : 'text-slate-600 dark:text-slate-400 hover:text-blue-600 dark:hover:text-blue-300 hover:bg-blue-50 dark:hover:bg-blue-800/30 font-medium'
+                                  }`}
+                                  title={isDone ? `${lesson.title} (Đã hoàn thành)` : lesson.title}
+                                >
+                                  {/* Minimal Status Indicator */}
+                                  <div className={`w-1.5 h-1.5 rounded-full shrink-0 transition-colors ${
+                                    isDone 
+                                      ? 'bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.4)]' 
+                                      : isSelected && viewMode === 'interactive'
+                                        ? 'bg-blue-500'
+                                        : 'bg-slate-200 dark:bg-slate-700'
+                                  }`} />
+                                  
+                                  <span className="truncate">{lesson.title}</span>
+                                  
+                                  {isDone && !isSelected && (
+                                    <Check className="w-3 h-3 text-emerald-500 ml-auto shrink-0" />
+                                  )}
+                                </button>
+                              </li>
+                            );
+                          })}
+                        </ol>
+                      )}
+                    </li>
+                  );
+                })}
+              </ol>
             )}
           </div>
 
           {/* Sidebar Footer */}
-          <div className="p-2.5 px-3 bg-slate-50/90 dark:bg-slate-800/80 border-t border-slate-100 dark:border-slate-800 text-[11px] text-slate-500 dark:text-slate-400 flex items-center justify-between shrink-0">
-            <span>Tổng: <strong>{subjectLessons.length}</strong> bài</span>
-            <span className="text-emerald-600 dark:text-emerald-400 font-bold flex items-center gap-1.5">
-              <span className="w-3.5 h-3.5 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-600 dark:text-emerald-400 flex items-center justify-center text-[10px] font-bold">✓</span>
-              <span>Đã học: {subjectLessons.filter(l => scanLessonData(l).isCompleted).length}</span>
-            </span>
+          <div className="p-3 bg-slate-50/80 dark:bg-slate-900 border-t border-slate-100 dark:border-slate-800 text-[10px] uppercase tracking-wider text-slate-400 dark:text-slate-500 flex items-center justify-between shrink-0">
+            <span>Tiến độ: <strong>{subjectLessons.filter(l => scanLessonData(l).isCompleted).length}/{subjectLessons.length}</strong> bài</span>
+            <div className="flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+              <span>Đã học</span>
+            </div>
           </div>
         </aside>
 
