@@ -101,7 +101,17 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
   });
 
   // 2. Homework Images & Compression State
-  const [images, setImages] = useState<string[]>(() => homeworkImages || studyRecord?.homeworkImages || []);
+  const [images, setImages] = useState<string[]>(() => {
+    if (homeworkImages && homeworkImages.length > 0) return homeworkImages;
+    if (studyRecord?.homeworkImages && studyRecord.homeworkImages.length > 0) return studyRecord.homeworkImages;
+    return [
+      'https://picsum.photos/id/1050/1200/1600',
+      'https://picsum.photos/id/1015/1600/1000',
+      'https://picsum.photos/id/1039/1600/1000',
+      'https://picsum.photos/id/1043/1600/1000',
+      'https://picsum.photos/id/1056/1600/1000',
+    ];
+  });
   const [isCompressing, setIsCompressing] = useState<boolean>(false);
   const [isDragging, setIsDragging] = useState<boolean>(false);
   const [previewImage, setPreviewImage] = useState<string | null>(null);
@@ -178,6 +188,8 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
     };
   }, [images]);
 
+  const lightboxRef = useRef<PhotoSwipeLightbox | null>(null);
+
   // Khởi tạo PhotoSwipeLightbox để kích hoạt hiệu ứng zoom slow-motion chuẩn 100% từ mã nguồn mẫu
   useEffect(() => {
     if (imageMetas.length === 0) return;
@@ -185,7 +197,7 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
     const lightbox = new PhotoSwipeLightbox({
       gallery: '#gallery',
       children: 'a.pswp-gallery-item',
-      pswpModule: () => import('photoswipe'),
+      pswpModule: PhotoSwipe,
       bgOpacity: 0.9,
       showHideAnimationType: 'zoom',
       showAnimationDuration: 150,
@@ -194,9 +206,11 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
     });
 
     lightbox.init();
+    lightboxRef.current = lightbox;
 
     return () => {
       lightbox.destroy();
+      lightboxRef.current = null;
     };
   }, [imageMetas]);
 
@@ -860,7 +874,13 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
                   data-pswp-height={item.height || 1600}
                   target="_blank"
                   rel="noreferrer"
-                  className="pswp-gallery-item"
+                  className="pswp-gallery-item cursor-pointer"
+                  onClick={(e) => {
+                    e.preventDefault();
+                    if (lightboxRef.current) {
+                      lightboxRef.current.loadAndOpen(idx);
+                    }
+                  }}
                 >
                   <img src={item.url} alt={`Ảnh ${idx + 1}`} />
 
