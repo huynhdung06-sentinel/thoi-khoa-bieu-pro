@@ -704,8 +704,12 @@ export default function App() {
 
         const firebaseData = cloudResult.status === 'fulfilled' ? cloudResult.value : null;
 
-        if (firebaseData) {
-          // Cập nhật State với bản mới nhất từ Cloud
+        // Ưu tiên Local Data, KHÔNG BAO GIỜ để Cloud cũ ghi đè Local mới
+        if (localDataFound) {
+          // Local đã nạp xong, bỏ qua Cloud data trong bước khởi tạo này.
+          // Cloud sync 2 chiều realtime sẽ lo phần cập nhật sau (nếu có thay đổi thực sự từ nơi khác)
+        } else if (firebaseData) {
+          // CHỈ lấy Cloud data nếu chưa có Local data (ví dụ: đăng nhập máy mới)
           setClassInfo(firebaseData.classInfo || { ...INITIAL_CLASS_INFO, weekStartDate: getVietnamCurrentMondayStr() });
           setTimetableSlots(firebaseData.timetableSlots || INITIAL_TIMETABLE_SLOTS);
           setSubjects(firebaseData.subjects || SUBJECTS_LIST);
@@ -716,7 +720,7 @@ export default function App() {
           setDocuments(firebaseData.documents || INITIAL_DOCUMENTS);
           loadedChildIdRef.current = id;
 
-          // Lưu bản mới nhất này vào IndexedDB để cache cục bộ được làm mới ngay
+          // Lưu xuống Local ngay
           try {
             if (currentRole === 'admin') {
               Promise.all([
@@ -742,9 +746,9 @@ export default function App() {
               ]).catch(e => console.warn('Cache save warning:', e));
             }
           } catch (cacheErr) {
-            console.warn('Lỗi ghi đè cache IndexedDB từ Cloud:', cacheErr);
+            console.warn('Lỗi ghi cache IndexedDB từ Cloud:', cacheErr);
           }
-        } else if (!localDataFound) {
+        } else {
           // Chưa có cả dữ liệu Cloud và Local -> khởi tạo dữ liệu mẫu sạch
           const rawGrade = activeChildProfile.className || (activeChildProfile.grade ? String(activeChildProfile.grade) : '7');
           const finalClass = (rawGrade.toLowerCase().startsWith('lớp') || rawGrade.toLowerCase().startsWith('sinh viên') || rawGrade.toLowerCase().startsWith('đại học'))
@@ -852,148 +856,509 @@ export default function App() {
 
   const [isCloudAutoSaving, setIsCloudAutoSaving] = useState(false);
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
-  const isCloudSaveInFlightRef = useRef(false);
-  const hasPendingChangesRef = useRef(false);
-  const lastSavedPayloadRef = useRef<string>('');
+  
+// ============================================================
+// LOCAL-FIRST PERSISTENCE + CLOUD LATEST-SNAPSHOT QUEUE
+// ============================================================
 
-  // Local-first & Optimistic UI Queue (Google Docs/Notion style sync)
-  useEffect(() => {
-    if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
-    if (loadedChildIdRef.current !== activeChildProfile.id) return;
+const isCloudSaveInFlightRef = useRef(false);
 
-    // 1. TỐC ĐỘ ÁNH SÁNG (0ms trễ): Lưu tức thì vào IndexedDB cục bộ của máy (hỗ trợ cả Student và Admin/Parent)
-    const currentPayload = {
-      classInfo,
-      subjects,
-      timetableSlots,
-      lessons,
-      lessonPlans,
-      studyRecords,
-      documents,
-      periods
-    };
-    const currentSignature = JSON.stringify(currentPayload);
+const cloudTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-    try {
-      const isParentAdmin = currentRole === 'admin';
-      const childId = activeChildProfile.id;
+const latestSnapshotRef = useRef<{
+  payload: any;
+  signature: string;
+  revision: number;
+} | null>(null);
 
-      const saveLocalFn = (key: any, data: any) => {
-        if (isParentAdmin && childId) {
-          return saveChildLocalAppData(childId, key, data);
-        }
-        return saveLocalAppData(key, data);
-      };
+const lastCloudSavedSignatureRef = useRef<string>('');
 
-      Promise.all([
-        saveLocalFn(APP_DATA_KEYS.CLASS_INFO, classInfo),
-        saveLocalFn(APP_DATA_KEYS.SUBJECTS, subjects),
-        saveLocalFn(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
-        saveLocalFn(APP_DATA_KEYS.PERIODS, periods),
-        saveLocalFn(APP_DATA_KEYS.LESSONS, lessons),
-        saveLocalFn(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
-        saveLocalFn(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
-        saveLocalFn(APP_DATA_KEYS.DOCUMENTS, documents),
-      ]).catch(localSaveErr => {
-        console.error('Local IndexedDB immediate auto-save error:', localSaveErr);
-      });
-    } catch (err) {
-      console.error('Local IndexedDB synchronous error:', err);
+const localRevisionRef = useRef<number>(0);
+
+const pendingCloudRevisionRef = useRef<number | null>(null);
+
+const buildPersistencePayload = () => ({
+  classInfo,
+  subjects,
+  timetableSlots,
+  lessons,
+  lessonPlans,
+  studyRecords,
+  documents,
+  periods,
+});
+
+const createPayloadSignature = (payload: any): string => {
+  try {
+    return JSON.stringify(payload);
+  } catch (error) {
+    console.error('[PERSISTENCE] Cannot create payload signature:', error);
+    return '';
+  }
+};
+
+const getLocalSaveFunction = (
+  isParentAdmin: boolean,
+  childId: string
+) => {
+  if (isParentAdmin && childId) {
+    return (key: any, data: any) =>
+      saveChildLocalAppData(childId, key, data);
+  }
+
+  return (key: any, data: any) =>
+    saveLocalAppData(key, data);
+};
+
+// ------------------------------------------------------------
+// LOCAL SAVE
+// ------------------------------------------------------------
+
+const persistPayloadToIndexedDB = async (
+  payload: any,
+  revision: number
+): Promise<void> => {
+  const isParentAdmin = currentRole === 'admin';
+  const childId = activeChildProfile?.id || '';
+
+  const saveLocalFn = getLocalSaveFunction(
+    isParentAdmin,
+    childId
+  );
+
+  console.log(
+    `[LOCAL SAVE START] revision=${revision}`
+  );
+
+  await Promise.all([
+    saveLocalFn(APP_DATA_KEYS.CLASS_INFO, payload.classInfo),
+    saveLocalFn(APP_DATA_KEYS.SUBJECTS, payload.subjects),
+    saveLocalFn(
+      APP_DATA_KEYS.TIMETABLE_SLOTS,
+      payload.timetableSlots
+    ),
+    saveLocalFn(APP_DATA_KEYS.PERIODS, payload.periods),
+    saveLocalFn(APP_DATA_KEYS.LESSONS, payload.lessons),
+    saveLocalFn(
+      APP_DATA_KEYS.LESSON_PLANS,
+      payload.lessonPlans
+    ),
+    saveLocalFn(
+      APP_DATA_KEYS.STUDY_RECORDS,
+      payload.studyRecords
+    ),
+    saveLocalFn(APP_DATA_KEYS.DOCUMENTS, payload.documents),
+  ]);
+
+  console.log(
+    `[LOCAL SAVE SUCCESS] revision=${revision}`
+  );
+};
+
+// ------------------------------------------------------------
+// CLOUD SAVE
+// ------------------------------------------------------------
+
+const saveSnapshotToCloud = async (
+  snapshot: {
+    payload: any;
+    signature: string;
+    revision: number;
+  }
+): Promise<boolean> => {
+
+  // Viewer / Parent / Admin không ghi Cloud
+  if (currentRole === 'admin' || isViewerMode) {
+    return true;
+  }
+
+  if (!activeChildProfile?.id) {
+    console.warn(
+      '[CLOUD SAVE] No active child profile'
+    );
+    return false;
+  }
+
+  const payload = snapshot.payload;
+
+  console.log(
+    `[CLOUD SAVE START] revision=${snapshot.revision}`
+  );
+
+  try {
+    const promises: Promise<any>[] = [];
+
+    if (effectiveUserId) {
+      promises.push(
+        saveChildData(
+          effectiveUserId,
+          activeChildProfile.id,
+          payload
+        )
+      );
     }
 
-    // Nếu dữ liệu giống hệt bản ghi đã lưu trước đó -> bỏ qua lượt đồng bộ Cloud trùng lặp
-    if (lastSavedPayloadRef.current === currentSignature) {
+    if (family.familyCode) {
+      promises.push(
+        syncChildDataByCodeToCloud(
+          family.familyCode,
+          activeChildProfile.id,
+          payload
+        )
+      );
+    }
+
+    // Student workspace
+    promises.push(
+      saveStudentWorkspaceToCloud(
+        studentId,
+        payload
+      )
+    );
+
+    promises.push(
+      syncStudentProfileToCloud({
+        studentId,
+        studentName:
+          payload.classInfo?.studentName ||
+          activeChildProfile?.name ||
+          'Học Sinh',
+        grade: activeChildProfile?.grade
+          ? String(activeChildProfile.grade)
+          : '',
+        className: payload.classInfo?.className,
+        avatar:
+          activeChildProfile?.avatar || '👦',
+        viewerPassword,
+        studentEmail:
+          currentUser?.email || '',
+      })
+    );
+
+    await Promise.all(promises);
+
+    console.log(
+      `[CLOUD SAVE SUCCESS] revision=${snapshot.revision}`
+    );
+
+    lastCloudSavedSignatureRef.current =
+      snapshot.signature;
+
+    setLastCloudSyncSuccess(new Date());
+
+    return true;
+
+  } catch (error) {
+
+    console.error(
+      `[CLOUD SAVE FAILED] revision=${snapshot.revision}`,
+      error
+    );
+
+    return false;
+  }
+};
+
+// ------------------------------------------------------------
+// CLOUD QUEUE PROCESSOR
+// ------------------------------------------------------------
+
+const processCloudQueue = async () => {
+
+  // Không cho phép 2 Cloud request chạy đồng thời.
+  if (isCloudSaveInFlightRef.current) {
+    return;
+  }
+
+  const snapshot = latestSnapshotRef.current;
+
+  if (!snapshot) {
+    setIsCloudAutoSaving(false);
+    return;
+  }
+
+  // Snapshot này đã save rồi.
+  if (
+    snapshot.signature ===
+    lastCloudSavedSignatureRef.current
+  ) {
+    setIsCloudAutoSaving(false);
+    return;
+  }
+
+  isCloudSaveInFlightRef.current = true;
+
+  const savingSnapshot = snapshot;
+
+  pendingCloudRevisionRef.current =
+    savingSnapshot.revision;
+
+  try {
+
+    const success =
+      await saveSnapshotToCloud(
+        savingSnapshot
+      );
+
+    if (!success) {
+      // Không xóa latestSnapshot.
+      // Giữ lại để lần sau retry.
       setIsCloudAutoSaving(false);
       return;
     }
 
-    // 2. HÀNG ĐỢI LƯU NGẦM CLOUD (Optimistic Background Sync - Debounce 15000ms để chống nghẽn stream)
-    setIsCloudAutoSaving(true);
-    
-    const triggerCloudSave = async () => {
-      if (isCloudSaveInFlightRef.current) {
-        // Đánh dấu "đang có thay đổi mới chưa gửi"
-        hasPendingChangesRef.current = true;
-        return;
-      }
+    /*
+     * QUAN TRỌNG:
+     *
+     * Trong lúc savingSnapshot đang upload,
+     * latestSnapshotRef có thể đã thay đổi.
+     *
+     * Ví dụ:
+     *
+     * savingSnapshot = A
+     * latestSnapshot = D
+     *
+     * Không được đánh dấu D là đã save.
+     */
 
-      isCloudSaveInFlightRef.current = true;
-      hasPendingChangesRef.current = false;
+    const latestSnapshot =
+      latestSnapshotRef.current;
 
-      const savingPayload = {
-        classInfo,
-        subjects,
-        timetableSlots,
-        lessons,
-        lessonPlans,
-        studyRecords,
-        documents,
-        periods
-      };
-      const savingSignature = JSON.stringify(savingPayload);
+    if (
+      latestSnapshot &&
+      latestSnapshot.signature !==
+        savingSnapshot.signature
+    ) {
 
-      try {
-        const promises: Promise<any>[] = [];
-        if (currentRole !== 'admin' && !isViewerMode) {
-          if (effectiveUserId) {
-            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, savingPayload));
-          }
-          if (family.familyCode) {
-            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, savingPayload));
-          }
+      console.log(
+        `[CLOUD QUEUE] Newer snapshot detected: ` +
+        `${savingSnapshot.revision} -> ` +
+        `${latestSnapshot.revision}`
+      );
 
-          // 🎓 Đồng bộ không gian học sinh cá nhân (1 Link + 1 Password)
-          promises.push(saveStudentWorkspaceToCloud(studentId, savingPayload));
-          promises.push(syncStudentProfileToCloud({
-            studentId,
-            studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
-            grade: activeChildProfile?.grade ? String(activeChildProfile.grade) : '',
-            className: classInfo.className,
-            avatar: activeChildProfile?.avatar || '👦',
-            viewerPassword,
-            studentEmail: currentUser?.email || '',
-          }));
-        }
+      /*
+       * Không gọi processCloudQueue() đệ quy ngay lập tức.
+       *
+       * Cho debounce 15 giây để tiếp tục gom thay đổi.
+       */
+      scheduleCloudSave(15000);
 
-        await Promise.all(promises);
-        setLastCloudSyncSuccess(new Date());
-        lastSavedPayloadRef.current = savingSignature;
-      } catch (err) {
-        console.error('Cloud background sync error:', err);
-      } finally {
-        isCloudSaveInFlightRef.current = false;
-        setIsCloudAutoSaving(false);
+    } else {
 
-        // Nếu trong lúc lưu Cloud mà có thay đổi tiếp -> lập tức lưu lượt tiếp theo!
-        if (hasPendingChangesRef.current) {
-          triggerCloudSave();
-        }
-      }
-    };
+      setIsCloudAutoSaving(false);
+    }
 
-    const timer = setTimeout(() => {
-      triggerCloudSave();
-    }, 15000); // 15 giây debounce gom nhóm thay đổi theo chuẩn tối ưu Cloud Firestore
+  } catch (error) {
 
-    return () => clearTimeout(timer);
-  }, [
-    classInfo,
-    subjects,
-    timetableSlots,
-    lessons,
-    lessonPlans,
-    studyRecords,
-    documents,
-    periods,
-    activeChildProfile?.id,
-    isHydrated,
-    effectiveUserId,
-    family.familyCode,
-    currentRole,
-    isViewerMode,
-    studentId,
-    viewerPassword
-  ]);
+    console.error(
+      '[CLOUD QUEUE] Unexpected error:',
+      error
+    );
+
+  } finally {
+
+    isCloudSaveInFlightRef.current = false;
+    pendingCloudRevisionRef.current = null;
+
+    /*
+     * Nếu có snapshot mới xuất hiện trong lúc request đang chạy,
+     * giữ queue lại.
+     */
+    const latestSnapshot =
+      latestSnapshotRef.current;
+
+    if (
+      latestSnapshot &&
+      latestSnapshot.signature !==
+        lastCloudSavedSignatureRef.current
+    ) {
+
+      scheduleCloudSave(15000);
+
+    } else {
+
+      setIsCloudAutoSaving(false);
+    }
+  }
+};
+
+// ------------------------------------------------------------
+// CLOUD DEBOUNCE
+// ------------------------------------------------------------
+
+const scheduleCloudSave = (
+  delay = 15000
+) => {
+
+  if (cloudTimerRef.current) {
+    clearTimeout(cloudTimerRef.current);
+  }
+
+  cloudTimerRef.current =
+    setTimeout(() => {
+
+      cloudTimerRef.current = null;
+
+      processCloudQueue();
+
+    }, delay);
+};
+
+// ------------------------------------------------------------
+// MAIN AUTO-SAVE EFFECT
+// ------------------------------------------------------------
+
+useEffect(() => {
+
+  if (
+    isHydratingRef.current ||
+    !isHydrated ||
+    !activeChildProfile
+  ) {
+    return;
+  }
+
+  if (
+    loadedChildIdRef.current !==
+    activeChildProfile.id
+  ) {
+    return;
+  }
+
+  const payload =
+    buildPersistencePayload();
+
+  const signature =
+    createPayloadSignature(payload);
+
+  /*
+   * Mỗi state snapshot mới nhận revision mới.
+   */
+  localRevisionRef.current += 1;
+
+  const revision =
+    localRevisionRef.current;
+
+  const snapshot = {
+    payload,
+    signature,
+    revision,
+  };
+
+  /*
+   * QUAN TRỌNG:
+   *
+   * latestSnapshotRef luôn trỏ tới snapshot MỚI NHẤT.
+   *
+   * Đây là cách tránh closure cũ.
+   */
+  latestSnapshotRef.current =
+    snapshot;
+
+  // ----------------------------------------------------------
+  // 1. LOCAL FIRST
+  // ----------------------------------------------------------
+
+  persistPayloadToIndexedDB(
+    payload,
+    revision
+  ).catch(error => {
+
+    console.error(
+      `[LOCAL SAVE FAILED] revision=${revision}`,
+      error
+    );
+
+  });
+
+  // ----------------------------------------------------------
+  // 2. CLOUD
+  // ----------------------------------------------------------
+
+  if (
+    currentRole === 'admin' ||
+    isViewerMode
+  ) {
+    setIsCloudAutoSaving(false);
+    return;
+  }
+
+  /*
+   * Nếu snapshot này giống snapshot Cloud đã save
+   * thì không cần Cloud request.
+   */
+  if (
+    signature ===
+    lastCloudSavedSignatureRef.current
+  ) {
+    setIsCloudAutoSaving(false);
+    return;
+  }
+
+  setIsCloudAutoSaving(true);
+
+  /*
+   * Mỗi thay đổi reset debounce 15 giây.
+   *
+   * A
+   * ↓
+   * 5s
+   * B
+   * ↓
+   * reset timer
+   * ↓
+   * 15s
+   * Cloud B
+   */
+  scheduleCloudSave(15000);
+
+  return () => {
+    /*
+     * Không clear timer ở đây.
+     *
+     * React cleanup xảy ra mỗi lần dependency thay đổi.
+     * Nếu clear timer ở đây, debounce sẽ không hoạt động
+     * đúng theo latest snapshot.
+     */
+  };
+
+}, [
+  classInfo,
+  subjects,
+  timetableSlots,
+  lessons,
+  lessonPlans,
+  studyRecords,
+  documents,
+  periods,
+  activeChildProfile?.id,
+  isHydrated,
+  effectiveUserId,
+  family.familyCode,
+  currentRole,
+  isViewerMode,
+  studentId,
+]);
+
+// ------------------------------------------------------------
+// CLEANUP
+// ------------------------------------------------------------
+
+useEffect(() => {
+
+  return () => {
+
+    if (cloudTimerRef.current) {
+      clearTimeout(
+        cloudTimerRef.current
+      );
+
+      cloudTimerRef.current = null;
+    }
+
+  };
+
+}, []);
 
   // -------------------------------------------------------------------------
   // 👨‍👩‍👧 PARENT VIEWER MODE & REALTIME LISTENER
