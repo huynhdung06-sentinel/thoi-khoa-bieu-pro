@@ -39,6 +39,22 @@ export const db = config.firestoreDatabaseId && config.firestoreDatabaseId !== '
 export const auth = getAuth(app);
 export const googleProvider = new GoogleAuthProvider();
 googleProvider.setCustomParameters({ prompt: 'select_account' });
+googleProvider.addScope('https://www.googleapis.com/auth/drive.file');
+
+// In-memory token cache (strictly not stored in localStorage/sessionStorage for security)
+let cachedAccessToken: string | null = null;
+
+export const getCachedAccessToken = (): string | null => cachedAccessToken;
+export const setCachedAccessToken = (token: string | null) => {
+  cachedAccessToken = token;
+};
+
+// Automatic listener to clear cached access token upon logout
+auth.onAuthStateChanged((user) => {
+  if (!user) {
+    cachedAccessToken = null;
+  }
+});
 
 export interface GoogleAuthResult {
   success: boolean;
@@ -46,15 +62,22 @@ export interface GoogleAuthResult {
   code?: string;
   message?: string;
   silent?: boolean;
+  accessToken?: string;
 }
 
 export const signInWithGoogle = async (): Promise<GoogleAuthResult> => {
   try {
     const result = await signInWithPopup(auth, googleProvider);
+    const credential = GoogleAuthProvider.credentialFromResult(result);
+    const token = credential?.accessToken || null;
+    if (token) {
+      cachedAccessToken = token;
+    }
     return {
       success: true,
       user: result.user,
-      message: 'Đăng nhập Google thành công'
+      message: 'Đăng nhập Google thành công',
+      accessToken: token || undefined
     };
   } catch (error: any) {
     const code = error?.code || 'UNKNOWN_ERROR';

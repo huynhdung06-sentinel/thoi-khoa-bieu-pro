@@ -33,9 +33,12 @@ import {
   ImageIcon,
   RotateCw,
   X,
-  ZoomIn
+  ZoomIn,
+  Cloud
 } from 'lucide-react';
 import { getSubjectEmoji } from '../data/mockData';
+import { getCachedAccessToken, signInWithGoogle } from '../lib/firebase';
+import { syncDataToGoogleDrive } from '../utils/googleDriveSync';
 
 /**
  * Sanitizes rich text content to remove layout-distorting iframe, style, link and script tags,
@@ -166,6 +169,7 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
   }, [activeLessonTab]);
   const [zoomedImage, setZoomedImage] = useState<string | null>(null);
   const [imageRotation, setImageRotation] = useState<number>(0);
+  const [isSyncingDrive, setIsSyncingDrive] = useState<boolean>(false);
 
   // Get current active subject object
   const currentSubject = useMemo(() => {
@@ -1351,6 +1355,96 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
     setTimeout(() => setCopiedHtml(false), 2000);
   };
 
+  // ----------------------------------------------------
+  // GOOGLE DRIVE SYNC BACKUP DATA HANDLERS (PURE JSON OVERWRITE)
+  // ----------------------------------------------------
+  const generateDriveJsonData = () => {
+    return {
+      subjectName: selectedSubjectName,
+      exportedAt: new Date().toISOString(),
+      chapters: groupedByChapter.map(ch => ({
+        chapterName: ch.chapterName,
+        lessons: ch.lessons.map(l => {
+          const scanned = scanLessonData(l);
+          const sections = scanned.mindmapReport?.sections || (
+            l.keyPoints && l.keyPoints.length > 0
+              ? [{ id: 'sec-kp', title: 'Trọng tâm bài học', subPoints: l.keyPoints, colorHex: '#2563eb' }]
+              : (l.sections && l.sections.length > 0
+                ? l.sections.map((s, idx) => ({
+                    id: `sec-${idx}`,
+                    title: s.title || `Phần ${idx + 1}`,
+                    subPoints: s.content ? [s.content.replace(/<[^>]+>/g, '').trim().slice(0, 150)] : [],
+                    colorHex: ['#2563eb', '#9333ea', '#0d9488', '#d97706', '#e11d48'][idx % 5]
+                  }))
+                : [])
+          );
+
+          return {
+            id: l.id,
+            lessonNumber: l.lessonNumber,
+            title: l.title,
+            chapter: l.chapter || ch.chapterName,
+            volume: l.volume || 1,
+            primaryNote: scanned.primaryNote || '',
+            summary: scanned.summaryText || l.summary || '',
+            keyPoints: scanned.keyPointsList || l.keyPoints || [],
+            personalNote: l.personalNote || '',
+            examples: l.examples || [],
+            htmlBody: l.htmlBody || '',
+            embeddedHtmlCode: l.embeddedHtmlCode || '',
+            completedHomeworkImages: scanned.homeworkImages || [],
+            studentNote: scanned.studentNote || scanned.record?.studentNote || '',
+            submittedAt: scanned.record?.submittedAt || '',
+            mindmapSections: sections,
+            isCompleted: scanned.isCompleted
+          };
+        })
+      }))
+    };
+  };
+
+  const handleSyncToGoogleDrive = async () => {
+    const confirmed = window.confirm(
+      `Bạn có muốn đồng bộ toàn bộ dữ liệu ôn tập môn ${selectedSubjectName} lên Google Drive của mình dưới dạng file cấu trúc JSON học tập sạch?\n\n(Nếu đã có file cũ trùng tên, hệ thống sẽ tự động ghi đè bản mới nhất để dọn dẹp bộ nhớ).`
+    );
+    if (!confirmed) return;
+
+    setIsSyncingDrive(true);
+    try {
+      let token = getCachedAccessToken();
+      
+      if (!token) {
+        // If the short-lived in-memory token is absent, re-trigger a quick login popup
+        const loginRes = await signInWithGoogle();
+        if (loginRes.success && loginRes.accessToken) {
+          token = loginRes.accessToken;
+        } else {
+          alert(loginRes.message || 'Cần xác thực tài khoản Google để cấp quyền lưu file lên Drive.');
+          setIsSyncingDrive(false);
+          return;
+        }
+      }
+
+      if (!token) {
+        alert('Không tìm thấy mã xác thực Google Drive. Vui lòng thử lại.');
+        setIsSyncingDrive(false);
+        return;
+      }
+
+      const jsonData = generateDriveJsonData();
+      const fileName = `Tong_Hop_Kien_Thuc_Mon_${selectedSubjectName.replace(/\s+/g, '_')}.json`;
+
+      const syncRes = await syncDataToGoogleDrive(token, fileName, jsonData);
+      
+      alert(syncRes.message);
+    } catch (error: any) {
+      console.error('[Drive Sync Handle Error]', error);
+      alert(`Đồng bộ thất bại: ${error.message || 'Lỗi không xác định'}`);
+    } finally {
+      setIsSyncingDrive(false);
+    }
+  };
+
   return (
     <div className={`flex flex-col h-[calc(100vh-120px)] sm:h-[calc(100vh-135px)] gap-3.5 animate-in fade-in duration-200 ${isFullscreen ? 'fixed inset-0 z-50 bg-slate-100 dark:bg-slate-900 p-3.5 sm:p-4 h-screen' : ''}`}>
       
@@ -1400,6 +1494,22 @@ export const KnowledgeSummaryView: React.FC<KnowledgeSummaryViewProps> = ({
             >
               <Download className="w-3.5 h-3.5" />
               <span>Tải file HTML (.html)</span>
+            </button>
+
+            {/* GOOGLE DRIVE SYNC BACKUP ACTION */}
+            <button
+              type="button"
+              disabled={isSyncingDrive}
+              onClick={handleSyncToGoogleDrive}
+              className={`px-3 py-1.5 rounded-xl text-[11px] font-black transition-all flex items-center gap-1 cursor-pointer border shadow-xs ${
+                isSyncingDrive
+                  ? 'bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-500 cursor-not-allowed'
+                  : 'bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white border-blue-500 shadow-sm shadow-blue-500/10'
+              }`}
+              title="Đồng bộ lưu trữ toàn bộ dữ liệu ôn tập (JSON) lên Google Drive của bạn (Tự động ghi đè bản cũ)"
+            >
+              <Cloud className={`w-3.5 h-3.5 ${isSyncingDrive ? 'animate-bounce text-blue-500' : 'text-white'}`} />
+              <span>{isSyncingDrive ? 'Đang lưu Drive...' : 'Lưu Google Drive (JSON)'}</span>
             </button>
 
             {/* Fullscreen Toggle */}
