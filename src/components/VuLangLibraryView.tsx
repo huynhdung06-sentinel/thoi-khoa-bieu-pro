@@ -1011,7 +1011,7 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = React.memo(({
 
           {/* TAB 1: DANH SÁCH BÀI HỌC */}
           <div className="flex-1 overflow-y-auto pr-1 space-y-3 min-h-0">
-            {filteredLessons.length === 0 ? (
+            {filteredLessons.length === 0 && !isEditorMode ? (
               <div className="bg-white dark:bg-[#161f30] p-10 rounded-lg border border-slate-200 dark:border-slate-800 text-center space-y-3">
                 <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-400 mx-auto flex items-center justify-center">
                   <Search className="w-6 h-6" />
@@ -1034,9 +1034,37 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = React.memo(({
                   Xem tất cả bài học
                 </button>
               </div>
-            ) : viewDisplayMode === 'grid' ? (
-                /* TRÌNH BÀY DẠNG CHƯƠNG BÀI HỌC TRỰC QUAN (CARDS BY CHAPTER) */
-                <div className="space-y-4">
+            ) : (
+              <>
+                {viewDisplayMode === 'grid' ? (
+                  /* TRÌNH BÀY DẠNG CHƯƠNG BÀI HỌC TRỰC QUAN (CARDS BY CHAPTER) */
+                  <div className="space-y-4">
+                    {/* Starter UI when empty in Editor Mode */}
+                  {filteredLessons.length === 0 && isEditorMode && (
+                    <div className="bg-blue-50/30 dark:bg-blue-950/20 border-2 border-dashed border-blue-200 dark:border-blue-800/50 rounded-xl p-8 text-center flex flex-col items-center gap-3">
+                      <div className="w-14 h-14 rounded-2xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400 flex items-center justify-center shadow-xs">
+                        <Plus className="w-7 h-7" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-slate-900 dark:text-white">Môn học này đang trống</h3>
+                        <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 max-w-xs">
+                          Hãy bắt đầu bằng cách thêm chương mới và các bài học để xây dựng thư viện của bạn.
+                        </p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setIsAddingNewChapter(true);
+                          setNewChapterTitleInput('');
+                        }}
+                        className="mt-2 px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-sm font-bold flex items-center gap-2 cursor-pointer transition-all shadow-md active:scale-95"
+                      >
+                        <Plus className="w-4 h-4" />
+                        <span>Bắt đầu Thêm Chương Mới</span>
+                      </button>
+                    </div>
+                  )}
+
                   {(Object.entries(lessonsByChapter) as [string, Lesson[]][]).map(([chapterTitle, chLessons]) => {
                     return (
                       <div 
@@ -1545,60 +1573,62 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = React.memo(({
                       </tbody>
                     </table>
                   </div>
-
-                  {/* Inline Add Chapter Bar when in Editor Mode */}
-                  {isEditorMode && (
-                    <div className="p-3 bg-slate-50 dark:bg-slate-800/70 border-t border-slate-200 dark:border-slate-700 flex flex-wrap items-center justify-between gap-3">
-                      {isAddingNewChapter ? (
-                        <div className="flex items-center gap-2 max-w-md w-full">
-                          <input
-                            type="text"
-                            value={newChapterTitleInput}
-                            onChange={(e) => setNewChapterTitleInput(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') handleAddNewChapter();
-                              if (e.key === 'Escape') setIsAddingNewChapter(false);
-                            }}
-                            placeholder="Ví dụ: Chương V - Thống kê và Xác suất..."
-                            className="flex-1 px-3 py-1.5 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-blue-500 rounded-lg outline-none text-slate-900 dark:text-white"
-                            autoFocus
-                          />
-                          <button
-                            type="button"
-                            onClick={handleAddNewChapter}
-                            className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shrink-0 shadow-2xs"
-                          >
-                            Tạo chương
-                          </button>
-                          <button
-                            type="button"
-                            onClick={() => setIsAddingNewChapter(false)}
-                            className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs cursor-pointer transition-colors shrink-0"
-                          >
-                            Hủy
-                          </button>
-                        </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAddingNewChapter(true);
-                            setNewChapterTitleInput('');
-                          }}
-                          className="px-3.5 py-1.5 border border-dashed border-blue-400 dark:border-blue-600 hover:border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
-                        >
-                          <Plus className="w-4 h-4" />
-                          <span>+ Thêm Chương Mới</span>
-                        </button>
-                      )}
-                      <div className="text-[11px] text-slate-500 dark:text-slate-400">
-                        Đang sửa danh mục môn: <strong>{activeManageSubject}</strong> • Tự động lưu tức thì
-                      </div>
-                    </div>
-                  )}
                 </div>
               )}
-          </div>
+
+              {/* Shared Add Chapter Bar when in Editor Mode */}
+              {isEditorMode && (
+                <div className="mt-4 p-3 bg-slate-50 dark:bg-slate-800/70 border border-slate-200 dark:border-slate-700 rounded-xl flex flex-wrap items-center justify-between gap-3 shadow-sm">
+                  {isAddingNewChapter ? (
+                    <div className="flex items-center gap-2 max-w-md w-full">
+                      <input
+                        type="text"
+                        value={newChapterTitleInput}
+                        onChange={(e) => setNewChapterTitleInput(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter') handleAddNewChapter();
+                          if (e.key === 'Escape') setIsAddingNewChapter(false);
+                        }}
+                        placeholder="Ví dụ: Chương V - Thống kê và Xác suất..."
+                        className="flex-1 px-3 py-1.5 text-xs sm:text-sm bg-white dark:bg-slate-900 border border-blue-500 rounded-lg outline-none text-slate-900 dark:text-white"
+                        autoFocus
+                      />
+                      <button
+                        type="button"
+                        onClick={handleAddNewChapter}
+                        className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-xs font-bold cursor-pointer transition-colors shrink-0 shadow-2xs"
+                      >
+                        Tạo chương
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setIsAddingNewChapter(false)}
+                        className="px-2.5 py-1.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-lg text-xs cursor-pointer transition-colors shrink-0"
+                      >
+                        Hủy
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setIsAddingNewChapter(true);
+                        setNewChapterTitleInput('');
+                      }}
+                      className="px-3.5 py-1.5 border border-dashed border-blue-400 dark:border-blue-600 hover:border-blue-600 text-blue-600 dark:text-blue-400 bg-blue-50/50 dark:bg-blue-950/30 hover:bg-blue-50 rounded-lg text-xs font-bold flex items-center gap-1.5 cursor-pointer transition-all shadow-2xs"
+                    >
+                      <Plus className="w-4 h-4" />
+                      <span>+ Thêm Chương Mới</span>
+                    </button>
+                  )}
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Đang sửa danh mục môn: <strong>{activeManageSubject}</strong> • Tự động lưu tức thì
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
         </div>
       </div>
 
