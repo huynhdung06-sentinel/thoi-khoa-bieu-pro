@@ -183,11 +183,14 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
     if (imageMetas.length === 0) return;
 
     const lightbox = new PhotoSwipeLightbox({
-      gallery: '#gallery--header-home',
+      gallery: '#gallery',
       children: 'a.pswp-gallery-item',
       pswpModule: () => import('photoswipe'),
       bgOpacity: 0.9,
       showHideAnimationType: 'zoom',
+      showAnimationDuration: 150,
+      hideAnimationDuration: 150,
+      zoomAnimationDuration: 150,
     });
 
     lightbox.init();
@@ -719,213 +722,219 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
       {/* ========================================================================= */}
       {/* 📸 2. KHỐI TẢI ẢNH BÀI TẬP / VỞ GHI (NẰM DƯỚI SƠ ĐỒ TƯ DUY)                */}
       {/* ========================================================================= */}
-      <div
-        onDragOver={(e) => {
-          e.preventDefault();
-          setIsDragging(true);
-        }}
-        onDragLeave={() => setIsDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault();
-          setIsDragging(false);
-          if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
-        }}
-        className={`bg-white dark:bg-slate-900 border rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 transition-all ${
-          isDragging
-            ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/30 ring-2 ring-teal-400'
-            : 'border-teal-200 dark:border-teal-800/60'
-        }`}
-      >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0">
-              <ImageIcon className="w-5 h-5" />
+      {/* ========================================================================= */}
+      {/* 📸 2. THƯ VIỆN ẢNH BỐ CỤC COLLAGE & Ô KÉO THẢ (EXACT USER CODE STRUCTURE)    */}
+      {/* ========================================================================= */}
+      <style>{`
+        .gallery-card {
+            max-width: 920px;
+            margin: 0 auto;
+            background: #ffffff;
+            border-radius: 12px;
+            padding: 24px;
+            box-shadow: 0 8px 24px rgba(0,0,0,0.06);
+        }
+
+        .card-title {
+            margin: 0 0 10px 0;
+            font-size: 22px;
+            font-weight: 700;
+            color: #1a202c;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .divider {
+            border: 0;
+            height: 1px;
+            background: #e2e8f0;
+            margin: 16px 0;
+        }
+
+        .pswp-gallery-grid {
+            max-height: 500px;
+            overflow-y: auto;
+            padding: 10px;
+            border: 1px solid #e2e8f0;
+            border-radius: 10px;
+            background-color: #f7fafc;
+            display: grid;
+            grid-template-columns: 1.2fr 1fr 1fr;
+            grid-auto-rows: 200px;
+            gap: 10px;
+        }
+
+        .pswp-gallery-grid a {
+            display: block;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.08);
+            position: relative;
+        }
+
+        .pswp-gallery-grid a:first-child {
+            grid-column: 1 / 2;
+            grid-row: span 2;
+        }
+
+        .pswp-gallery-grid img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+            transition: transform 0.25s ease;
+        }
+
+        .pswp-gallery-grid a:hover img {
+            transform: scale(1.05);
+        }
+
+        .dropzone-area {
+            border: 2px dashed #3182ce;
+            border-radius: 8px;
+            padding: 12px 15px;
+            text-align: center;
+            background-color: #ebf8ff;
+            cursor: pointer;
+            transition: all 0.2s ease;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+
+        .dropzone-area:hover, 
+        .dropzone-area.dragover {
+            background-color: #e2f2ff;
+            border-color: #2b6cb0;
+            box-shadow: 0 4px 12px rgba(49, 130, 206, 0.15);
+        }
+
+        .dropzone-icon {
+            font-size: 22px;
+            line-height: 1;
+        }
+
+        .dropzone-text {
+            font-size: 13.5px;
+            font-weight: 600;
+            color: #2d3748;
+            margin: 0;
+        }
+
+        .dropzone-text span {
+            color: #3182ce;
+            text-decoration: underline;
+        }
+
+        .dropzone-hint {
+            font-size: 12px;
+            color: #718096;
+            margin: 0;
+        }
+
+        .file-input-hidden {
+            display: none;
+        }
+      `}</style>
+
+      <div className="gallery-card">
+        {/* 1. Tiêu đề */}
+        <h3 className="card-title">📸 Thư Viện Ảnh Bố Cục Collage</h3>
+
+        {/* Đường gạch ngăn cách */}
+        <hr className="divider" />
+
+        {/* 2. 🖼️ Khung Lưới Hiển Thị Gallery (Nằm trên) */}
+        {imageMetas.length > 0 && (
+          <>
+            <div className="pswp-gallery-grid" id="gallery">
+              {imageMetas.map((item, idx) => (
+                <a
+                  key={idx}
+                  href={item.url}
+                  data-pswp-width={item.width || 1200}
+                  data-pswp-height={item.height || 1600}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="pswp-gallery-item"
+                >
+                  <img src={item.url} alt={`Ảnh ${idx + 1}`} />
+
+                  {/* Nút xóa ảnh */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      handleRemoveImage(idx);
+                    }}
+                    className="absolute top-2 right-2 z-20 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-md shadow-md transition-transform hover:scale-110 cursor-pointer"
+                    title="Xóa trang ảnh này"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                  </button>
+                </a>
+              ))}
             </div>
-            <div>
-              <h4 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
-                Ảnh bài tập & vở ghi
-                {images.length > 0 && (
-                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/80 dark:text-teal-200">
-                    {images.length} trang
-                  </span>
-                )}
-              </h4>
-              <p className="text-xs text-slate-500 dark:text-slate-400">
-                Tự động nén siêu nhẹ (~150KB) — Bấm ảnh bên dưới để xem lật trang
+
+            {/* Đường gạch ngăn cách */}
+            <hr className="divider" />
+          </>
+        )}
+
+        {/* 3. ☁️ Khung Kéo & Thả Upload Ảnh (Nhỏ gọn - Nằm dưới) */}
+        <div
+          id="dropzone"
+          className={`dropzone-area ${isDragging ? 'dragover' : ''}`}
+          onClick={() => fileInputRef.current?.click()}
+          onDragOver={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(true);
+          }}
+          onDragLeave={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+          }}
+          onDrop={(e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            setIsDragging(false);
+            if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
+          }}
+        >
+          {isCompressing ? (
+            <div className="flex items-center gap-2 text-blue-600 text-xs font-semibold">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Đang xử lý & nén ảnh...</span>
+            </div>
+          ) : (
+            <>
+              <span className="dropzone-icon">☁️</span>
+              <p className="dropzone-text">
+                Kéo & thả hình vào đây, hoặc <span>chọn từ máy tính</span>
               </p>
-            </div>
-          </div>
-
-          <button
-            type="button"
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isCompressing}
-            className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
-          >
-            {isCompressing ? (
-              <>
-                <Loader2 className="w-4 h-4 animate-spin" />
-                <span>Đang nén...</span>
-              </>
-            ) : (
-              <>
-                <Plus className="w-4 h-4" />
-                <span>Thêm ảnh vở ghi</span>
-              </>
-            )}
-          </button>
-
+              <span className="dropzone-hint">(PNG, JPG, WEBP)</span>
+            </>
+          )}
           <input
             ref={fileInputRef}
             type="file"
+            id="imageUploader"
+            className="file-input-hidden"
             accept="image/*"
             multiple
-            className="hidden"
             onChange={(e) => {
               if (e.target.files) handleProcessImageFiles(e.target.files);
               e.target.value = '';
             }}
           />
         </div>
-
-        {/* Ô Kéo & Thả Nhỏ Gọn Tối Giản */}
-        <div
-          onDragOver={(e) => {
-            e.preventDefault();
-            setIsDragging(true);
-          }}
-          onDragLeave={() => setIsDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault();
-            setIsDragging(false);
-            if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
-          }}
-          onClick={() => fileInputRef.current?.click()}
-          className={`border-2 border-dashed rounded-xl py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-2 ${
-            isDragging
-              ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/40'
-              : 'border-slate-200 dark:border-slate-800 hover:border-teal-400 dark:hover:border-teal-600 bg-slate-50/50 dark:bg-slate-900/40'
-          }`}
-        >
-          {isCompressing ? (
-            <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-semibold">
-              <Loader2 className="w-4 h-4 animate-spin" />
-              <span>Đang tự động tối ưu hóa & nén ảnh...</span>
-            </div>
-          ) : (
-            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-xs font-medium">
-              <Upload className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
-              <span>Kéo thả hoặc bấm vào đây để tải ảnh vở ghi</span>
-            </div>
-          )}
-        </div>
-
-        {/* BENTO GRID IMAGE GALLERY WITH PHOTOSWIPE */}
-        {imageMetas.length > 0 && (
-          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
-            {/* Container PhotoSwipe Gallery (Bento Layout) */}
-            <div
-              id="gallery--header-home"
-              className={`grid gap-3 w-full ${
-                imageMetas.length === 1
-                  ? 'grid-cols-1 max-w-xl mx-auto'
-                  : imageMetas.length === 2
-                  ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto'
-                  : 'grid-cols-2 md:grid-cols-3 max-w-4xl mx-auto'
-              }`}
-            >
-              {imageMetas.slice(0, 5).map((item, idx) => {
-                const isFeatured = imageMetas.length >= 3 && idx === 0;
-                const isFifthWithMore = idx === 4 && imageMetas.length > 5;
-                const extraCount = imageMetas.length - 4;
-
-                return (
-                  <figure
-                    key={idx}
-                    className={`relative group block rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-xs transition-all duration-200 hover:shadow-md hover:scale-[1.01] ${
-                      isFeatured
-                        ? 'col-span-2 row-span-2 min-h-[240px] sm:min-h-[320px]'
-                        : imageMetas.length >= 3
-                        ? 'col-span-1 row-span-1 min-h-[120px] sm:min-h-[150px]'
-                        : 'aspect-[4/3]'
-                    }`}
-                  >
-                    <a
-                      href={item.url}
-                      data-pswp-width={item.width}
-                      data-pswp-height={item.height}
-                      data-cropped="true"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="pswp-gallery-item block w-full h-full cursor-zoom-in"
-                    >
-                      <img
-                        src={item.url}
-                        alt={`Bài tập trang ${idx + 1}`}
-                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 block"
-                      />
-
-                      {/* Badge Trang */}
-                      <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 bg-black/60 backdrop-blur-xs text-white rounded-full text-[11px] font-bold flex items-center gap-1 pointer-events-none">
-                        <span>Trang {idx + 1}</span>
-                      </div>
-
-                      {/* Chú thích PhotoSwipe chuẩn */}
-                      <figcaption className="hidden">
-                        <strong>Trang {idx + 1}</strong> — Ảnh bài tập & vở ghi học sinh ({idx + 1}/{imageMetas.length})
-                      </figcaption>
-                    </a>
-
-                    {/* Nút xóa ảnh */}
-                    <button
-                      type="button"
-                      onClick={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleRemoveImage(idx);
-                      }}
-                      className="absolute top-2.5 right-2.5 z-20 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-md transition-transform hover:scale-110 cursor-pointer"
-                      title="Xóa trang ảnh này"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                    </button>
-
-                    {/* Overlay +N trang nếu số lượng > 5 */}
-                    {isFifthWithMore && (
-                      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white z-10 pointer-events-none transition-opacity group-hover:bg-slate-950/70">
-                        <span className="text-2xl sm:text-3xl font-extrabold">+ {extraCount}</span>
-                        <span className="text-xs font-bold text-slate-200">trang nữa</span>
-                      </div>
-                    )}
-                  </figure>
-                );
-              })}
-
-              {/* Tải thêm ẩn các ảnh còn lại (> 5) để PhotoSwipe tự động kết nối đầy đủ tất cả trang */}
-              {imageMetas.slice(5).map((item, sliceIdx) => {
-                const actualIdx = sliceIdx + 5;
-                return (
-                  <figure key={actualIdx} className="hidden">
-                    <a
-                      href={item.url}
-                      data-pswp-width={item.width}
-                      data-pswp-height={item.height}
-                      data-cropped="true"
-                      target="_blank"
-                      rel="noreferrer"
-                      className="pswp-gallery-item hidden"
-                    >
-                      <img src={item.url} alt={`Bài tập trang ${actualIdx + 1}`} />
-                      <figcaption className="hidden">
-                        <strong>Trang {actualIdx + 1}</strong> — Ảnh bài tập ({actualIdx + 1}/{imageMetas.length})
-                      </figcaption>
-                    </a>
-                  </figure>
-                );
-              })}
-            </div>
-          </div>
-        )}
       </div>
     </div>
   );
