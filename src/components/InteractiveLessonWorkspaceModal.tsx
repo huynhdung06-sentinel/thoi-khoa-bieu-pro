@@ -1242,9 +1242,13 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
 
   // Autosave when important data changes
   useEffect(() => {
+    if (isFirstRender.current) return;
+    
+    // We add back a light debounce to prevent React state update loops and UI stutter
+    // when typing fast in the visual editor. Since save is offline, 2000ms is perfectly safe.
     const handler = setTimeout(() => {
       handleSaveAll(true);
-    }, 1500);
+    }, 2000);
     return () => clearTimeout(handler);
   }, [htmlContent, embeddedHtmlCode, youtubeVideos, homeworkImages, editingTitle, textbookLinks]);
 
@@ -1421,30 +1425,9 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
               </button>
             </div>
 
-            {/* Real-time Auto-Save Status Badge */}
-            <div className="flex items-center">
-              {hasUnsavedChanges ? (
-                <div 
-                  className="px-3 py-1.5 bg-amber-50 dark:bg-amber-950/40 text-amber-600 dark:text-amber-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-amber-200/50 dark:border-amber-900/30 shadow-3xs"
-                  title="Có thay đổi mới, hệ thống sẽ tự động lưu sau giây lát!"
-                >
-                  <span className="relative flex h-2 w-2">
-                    <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
-                    <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
-                  </span>
-                  <span>Đang ghi nhận...</span>
-                </div>
-              ) : (
-                <div 
-                  className="px-3 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 rounded-lg text-xs font-semibold flex items-center gap-1.5 border border-emerald-200/50 dark:border-emerald-900/30 shadow-3xs"
-                  title="Mọi chỉnh sửa của bạn đã được lưu tự động thành công!"
-                >
-                  <Check className="w-3.5 h-3.5 text-emerald-500" />
-                  <span>Đã tự động lưu</span>
-                </div>
-              )}
-            </div>
-
+            {/* Real-time Auto-Save Status Badge - HIDDEN to improve UX smoothness */}
+            {/* The auto-save is instantaneous and invisible now. */}
+            
             {/* Back to Library Button */}
             <button
               type="button"
@@ -1626,11 +1609,8 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
                             ref={richTextCanvasRef}
                             contentEditable
                             onInput={(e) => {
-                              const cleaned = sanitizeHtmlLinksForImages(e.currentTarget.innerHTML);
-                              if (cleaned !== e.currentTarget.innerHTML) {
-                                e.currentTarget.innerHTML = cleaned;
-                              }
-                              setHtmlContent(cleaned);
+                              // We just update the state without doing heavy regex replace on every single keystroke.
+                              setHtmlContent(e.currentTarget.innerHTML);
                             }}
                             onPaste={(e) => {
                               handleEditorPaste(e);

@@ -26,7 +26,7 @@ interface VietnameseTimetableGridProps {
   isCapturing?: boolean;
 }
 
-export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = ({
+export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = React.memo(({
   periods = STANDARD_PERIODS,
   timetableSlots,
   lessonPlans,
@@ -496,4 +496,4 @@ export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = (
       )}
     </div>
   );
-};
+});

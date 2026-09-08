@@ -101,7 +101,7 @@ interface VuLangLibraryViewProps {
   }) => void;
 }
 
-export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = ({
+export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = React.memo(({
   lessons,
   subjects = SUBJECTS_LIST,
   studyRecords,
@@ -639,6 +639,9 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = ({
   };
 
   const handleSelectSubject = (subjName: string) => {
+    if (activeLessonModal && lessonHasUnsaved) {
+      setRequestExitSignal((s) => s + 1);
+    }
     setIsEditorMode(false);
     setAddingLessonToChapter(null);
     setIsAddingNewChapter(false);
@@ -882,18 +885,6 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = ({
           {/* LEFT COLUMN: MENU CÁC MÔN HỌC (Giữ nguyên menu trái để truy xuất các môn nhanh) */}
           <div className="w-full lg:w-[280px] shrink-0 h-[220px] lg:h-full overflow-hidden relative">
             {leftSubjectSidebar}
-            
-            {/* Blocking Overlay for Left Sidebar when there are unsaved changes */}
-            {lessonHasUnsaved && (
-              <div 
-                className="absolute inset-0 z-50 cursor-not-allowed bg-transparent"
-                title="Vui lòng lưu bài học trước khi chuyển trang!"
-                onClickCapture={(e) => {
-                  e.stopPropagation();
-                  setRequestExitSignal(s => s + 1);
-                }}
-              />
-            )}
           </div>
 
           {/* RIGHT COLUMN: KHÔNG GIAN NỘI DUNG BÀI HỌC */}
@@ -2467,4 +2458,4 @@ export const VuLangLibraryView: React.FC<VuLangLibraryViewProps> = ({
 
     </div>
   );
-}
+});
