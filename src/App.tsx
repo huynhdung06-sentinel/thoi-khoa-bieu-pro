@@ -854,15 +854,15 @@ export default function App() {
   const [lastCloudSyncSuccess, setLastCloudSyncSuccess] = useState<Date | null>(null);
   const isCloudSaveInFlightRef = useRef(false);
   const hasPendingChangesRef = useRef(false);
+  const lastSavedPayloadRef = useRef<string>('');
 
   // Local-first & Optimistic UI Queue (Google Docs/Notion style sync)
   useEffect(() => {
     if (isHydratingRef.current || !isHydrated || !activeChildProfile) return;
     if (loadedChildIdRef.current !== activeChildProfile.id) return;
-    if (currentRole === 'admin') return;
 
-    // 1. TỐC ĐỘ ÁNH SÁNG (0ms trễ): Lưu tức thì vào IndexedDB cục bộ của máy
-    const payload = {
+    // 1. TỐC ĐỘ ÁNH SÁNG (0ms trễ): Lưu tức thì vào IndexedDB cục bộ của máy (hỗ trợ cả Student và Admin/Parent)
+    const currentPayload = {
       classInfo,
       subjects,
       timetableSlots,
@@ -872,17 +872,28 @@ export default function App() {
       documents,
       periods
     };
+    const currentSignature = JSON.stringify(currentPayload);
 
     try {
+      const isParentAdmin = currentRole === 'admin';
+      const childId = activeChildProfile.id;
+
+      const saveLocalFn = (key: any, data: any) => {
+        if (isParentAdmin && childId) {
+          return saveChildLocalAppData(childId, key, data);
+        }
+        return saveLocalAppData(key, data);
+      };
+
       Promise.all([
-        saveLocalAppData(APP_DATA_KEYS.CLASS_INFO, classInfo),
-        saveLocalAppData(APP_DATA_KEYS.SUBJECTS, subjects),
-        saveLocalAppData(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
-        saveLocalAppData(APP_DATA_KEYS.PERIODS, periods),
-        saveLocalAppData(APP_DATA_KEYS.LESSONS, lessons),
-        saveLocalAppData(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
-        saveLocalAppData(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
-        saveLocalAppData(APP_DATA_KEYS.DOCUMENTS, documents),
+        saveLocalFn(APP_DATA_KEYS.CLASS_INFO, classInfo),
+        saveLocalFn(APP_DATA_KEYS.SUBJECTS, subjects),
+        saveLocalFn(APP_DATA_KEYS.TIMETABLE_SLOTS, timetableSlots),
+        saveLocalFn(APP_DATA_KEYS.PERIODS, periods),
+        saveLocalFn(APP_DATA_KEYS.LESSONS, lessons),
+        saveLocalFn(APP_DATA_KEYS.LESSON_PLANS, lessonPlans),
+        saveLocalFn(APP_DATA_KEYS.STUDY_RECORDS, studyRecords),
+        saveLocalFn(APP_DATA_KEYS.DOCUMENTS, documents),
       ]).catch(localSaveErr => {
         console.error('Local IndexedDB immediate auto-save error:', localSaveErr);
       });
@@ -890,7 +901,13 @@ export default function App() {
       console.error('Local IndexedDB synchronous error:', err);
     }
 
-    // 2. HÀNG ĐỢI LƯU NGẦM CLOUD (Optimistic Background Sync - Debounce 1000ms)
+    // Nếu dữ liệu giống hệt bản ghi đã lưu trước đó -> bỏ qua lượt đồng bộ Cloud trùng lặp
+    if (lastSavedPayloadRef.current === currentSignature) {
+      setIsCloudAutoSaving(false);
+      return;
+    }
+
+    // 2. HÀNG ĐỢI LƯU NGẦM CLOUD (Optimistic Background Sync - Debounce 15000ms để chống nghẽn stream)
     setIsCloudAutoSaving(true);
     
     const triggerCloudSave = async () => {
@@ -903,7 +920,7 @@ export default function App() {
       isCloudSaveInFlightRef.current = true;
       hasPendingChangesRef.current = false;
 
-      const currentPayload = {
+      const savingPayload = {
         classInfo,
         subjects,
         timetableSlots,
@@ -913,19 +930,20 @@ export default function App() {
         documents,
         periods
       };
+      const savingSignature = JSON.stringify(savingPayload);
 
       try {
         const promises: Promise<any>[] = [];
         if (currentRole !== 'admin' && !isViewerMode) {
           if (effectiveUserId) {
-            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, currentPayload));
+            promises.push(saveChildData(effectiveUserId, activeChildProfile.id, savingPayload));
           }
           if (family.familyCode) {
-            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, currentPayload));
+            promises.push(syncChildDataByCodeToCloud(family.familyCode, activeChildProfile.id, savingPayload));
           }
 
           // 🎓 Đồng bộ không gian học sinh cá nhân (1 Link + 1 Password)
-          promises.push(saveStudentWorkspaceToCloud(studentId, currentPayload));
+          promises.push(saveStudentWorkspaceToCloud(studentId, savingPayload));
           promises.push(syncStudentProfileToCloud({
             studentId,
             studentName: classInfo.studentName || activeChildProfile?.name || 'Học Sinh',
@@ -939,13 +957,14 @@ export default function App() {
 
         await Promise.all(promises);
         setLastCloudSyncSuccess(new Date());
+        lastSavedPayloadRef.current = savingSignature;
       } catch (err) {
         console.error('Cloud background sync error:', err);
       } finally {
         isCloudSaveInFlightRef.current = false;
         setIsCloudAutoSaving(false);
 
-        // Nếu trong lúc lưu Cloud mà học sinh vẫn gõ chữ tiếp -> lập tức lưu lượt tiếp theo!
+        // Nếu trong lúc lưu Cloud mà có thay đổi tiếp -> lập tức lưu lượt tiếp theo!
         if (hasPendingChangesRef.current) {
           triggerCloudSave();
         }
@@ -954,7 +973,7 @@ export default function App() {
 
     const timer = setTimeout(() => {
       triggerCloudSave();
-    }, 1000); // 1 giây debounce cực mượt theo chuẩn Google Docs
+    }, 15000); // 15 giây debounce gom nhóm thay đổi theo chuẩn tối ưu Cloud Firestore
 
     return () => clearTimeout(timer);
   }, [
