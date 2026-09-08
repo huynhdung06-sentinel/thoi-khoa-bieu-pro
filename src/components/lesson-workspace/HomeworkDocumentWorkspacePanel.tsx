@@ -5,10 +5,19 @@ import {
   Trash2,
   X,
   BookOpen,
-  RotateCcw
+  RotateCcw,
+  Upload,
+  ImageIcon,
+  Maximize2,
+  Loader2,
+  Sparkles
 } from 'lucide-react';
+import PhotoSwipe from 'photoswipe';
+import PhotoSwipeLightbox from 'photoswipe/lightbox';
+import 'photoswipe/dist/photoswipe.css';
 import { StudyRecord, TimetableSlot, LessonPlan, Lesson, MindmapSection, LessonMindmapReport } from '../../types';
 import { ConfettiCelebration } from './ConfettiCelebration';
+import { compressImageToDataUrl } from '../../utils/imageUtils';
 
 // Whimsical color palette for branches
 const BRANCH_PALETTE = [
@@ -77,9 +86,11 @@ interface HomeworkDocumentWorkspacePanelProps {
 
 export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspacePanelProps> = ({
   lesson,
+  homeworkImages,
   lessonTitle: initialLessonTitle,
   subjectName,
   studyRecord,
+  onUpdateImages,
   onCompleteLessonWithPhotos,
   onDeleteRecord,
   onSaveMindmap,
@@ -88,6 +99,103 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
   const [lessonTitle, setLessonTitle] = useState<string>(() => {
     return lesson.mindmapReport?.lessonTitle || initialLessonTitle || lesson.title || 'Nội dung bài học';
   });
+
+  // 2. Homework Images & Compression State
+  const [images, setImages] = useState<string[]>(() => homeworkImages || studyRecord?.homeworkImages || []);
+  const [isCompressing, setIsCompressing] = useState<boolean>(false);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+  const [previewImage, setPreviewImage] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleProcessImageFiles = async (files: FileList | File[]) => {
+    const validFiles = Array.from(files).filter((f) => f.type.startsWith('image/'));
+    if (validFiles.length === 0) return;
+
+    setIsCompressing(true);
+    try {
+      const compressedList: string[] = [];
+      for (const file of validFiles) {
+        // Tự động nén ảnh client-side siêu nhẹ
+        const compressedDataUrl = await compressImageToDataUrl(file, 1400, 0.8);
+        compressedList.push(compressedDataUrl);
+      }
+      const updated = [...images, ...compressedList];
+      setImages(updated);
+      onUpdateImages?.(updated);
+    } catch (err) {
+      console.error('Lỗi nén ảnh:', err);
+      alert('Không thể nén/tải ảnh. Vui lòng thử lại với file ảnh khác!');
+    } finally {
+      setIsCompressing(false);
+    }
+  };
+
+  const handleRemoveImage = (indexToRemove: number) => {
+    const updated = images.filter((_, idx) => idx !== indexToRemove);
+    setImages(updated);
+    onUpdateImages?.(updated);
+  };
+
+  const [imageMetas, setImageMetas] = useState<{ url: string; width: number; height: number }[]>([]);
+
+  // Tự động đo kích thước ảnh gốc (naturalWidth & naturalHeight) cho PhotoSwipe
+  useEffect(() => {
+    let isMounted = true;
+    if (!images || images.length === 0) {
+      setImageMetas([]);
+      return;
+    }
+
+    const loadAllDimensions = async () => {
+      const metas = await Promise.all(
+        images.map(
+          (url) =>
+            new Promise<{ url: string; width: number; height: number }>((resolve) => {
+              const img = new Image();
+              img.onload = () => {
+                resolve({
+                  url,
+                  width: img.naturalWidth || 1200,
+                  height: img.naturalHeight || 900,
+                });
+              };
+              img.onerror = () => {
+                resolve({ url, width: 1200, height: 900 });
+              };
+              img.src = url;
+            })
+        )
+      );
+      if (isMounted) {
+        setImageMetas(metas);
+      }
+    };
+
+    loadAllDimensions();
+
+    return () => {
+      isMounted = false;
+    };
+  }, [images]);
+
+  // Hàm mở PhotoSwipe lật trang trực tiếp 100% hoạt động mượt mà
+  const openPhotoSwipe = (initialIndex: number) => {
+    if (!imageMetas || imageMetas.length === 0) return;
+
+    const pswp = new PhotoSwipe({
+      dataSource: imageMetas.map((item, idx) => ({
+        src: item.url,
+        w: item.width || 1200,
+        h: item.height || 900,
+        alt: `Bài tập trang ${idx + 1}`,
+      })),
+      index: initialIndex,
+      bgOpacity: 0.9,
+      showHideAnimationType: 'zoom',
+    });
+
+    pswp.init();
+  };
 
   // 2. Sections & Key Points
   const [sections, setSections] = useState<MindmapSection[]>(() => {
@@ -331,7 +439,7 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
 
     // 2. Chốt bài học đưa ra Thời Khóa Biểu
     if (onCompleteLessonWithPhotos) {
-      onCompleteLessonWithPhotos([], 'Đã học xong bài học theo sơ đồ tư duy');
+      onCompleteLessonWithPhotos(images, 'Đã học xong bài học theo sơ đồ tư duy');
     }
     setShowSuccessBanner(true);
     setShowConfetti(true);
@@ -378,6 +486,8 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
           </button>
         </div>
       )}
+
+
 
       {/* ========================================================================= */}
       {/* 🌟 THANH ĐIỀU KHIỂN CỐT LÕI: CHỈ ĐÚNG 2 NÚT HÀNH ĐỘNG                       */}
@@ -604,6 +714,179 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
           </div>
 
         </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* 📸 2. KHỐI TẢI ẢNH BÀI TẬP / VỞ GHI (NẰM DƯỚI SƠ ĐỒ TƯ DUY)                */}
+      {/* ========================================================================= */}
+      <div
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDragging(true);
+        }}
+        onDragLeave={() => setIsDragging(false)}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDragging(false);
+          if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
+        }}
+        className={`bg-white dark:bg-slate-900 border rounded-2xl p-4 sm:p-5 shadow-xs space-y-3 transition-all ${
+          isDragging
+            ? 'border-teal-500 bg-teal-50/50 dark:bg-teal-950/30 ring-2 ring-teal-400'
+            : 'border-teal-200 dark:border-teal-800/60'
+        }`}
+      >
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-2.5">
+            <div className="w-9 h-9 rounded-xl bg-teal-100 dark:bg-teal-900/50 flex items-center justify-center text-teal-600 dark:text-teal-400 shrink-0">
+              <ImageIcon className="w-5 h-5" />
+            </div>
+            <div>
+              <h4 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                Ảnh bài tập & vở ghi
+                {images.length > 0 && (
+                  <span className="text-xs font-semibold px-2.5 py-0.5 rounded-full bg-teal-100 text-teal-800 dark:bg-teal-900/80 dark:text-teal-200">
+                    {images.length} trang
+                  </span>
+                )}
+              </h4>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Tự động nén siêu nhẹ (~150KB) — Bấm ảnh bên dưới để xem lật trang
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={() => fileInputRef.current?.click()}
+            disabled={isCompressing}
+            className="px-3.5 py-2 bg-teal-600 hover:bg-teal-700 active:scale-95 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer disabled:opacity-50"
+          >
+            {isCompressing ? (
+              <>
+                <Loader2 className="w-4 h-4 animate-spin" />
+                <span>Đang nén...</span>
+              </>
+            ) : (
+              <>
+                <Plus className="w-4 h-4" />
+                <span>Thêm ảnh vở ghi</span>
+              </>
+            )}
+          </button>
+
+          <input
+            ref={fileInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            className="hidden"
+            onChange={(e) => {
+              if (e.target.files) handleProcessImageFiles(e.target.files);
+              e.target.value = '';
+            }}
+          />
+        </div>
+
+        {/* Ô Kéo & Thả Nhỏ Gọn Tối Giản */}
+        <div
+          onDragOver={(e) => {
+            e.preventDefault();
+            setIsDragging(true);
+          }}
+          onDragLeave={() => setIsDragging(false)}
+          onDrop={(e) => {
+            e.preventDefault();
+            setIsDragging(false);
+            if (e.dataTransfer.files) handleProcessImageFiles(e.dataTransfer.files);
+          }}
+          onClick={() => fileInputRef.current?.click()}
+          className={`border-2 border-dashed rounded-xl py-2 px-3 text-center cursor-pointer transition-all flex items-center justify-center gap-2 ${
+            isDragging
+              ? 'border-teal-500 bg-teal-50 dark:bg-teal-950/40'
+              : 'border-slate-200 dark:border-slate-800 hover:border-teal-400 dark:hover:border-teal-600 bg-slate-50/50 dark:bg-slate-900/40'
+          }`}
+        >
+          {isCompressing ? (
+            <div className="flex items-center gap-2 text-teal-600 dark:text-teal-400 text-xs font-semibold">
+              <Loader2 className="w-4 h-4 animate-spin" />
+              <span>Đang tự động tối ưu hóa & nén ảnh...</span>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2 text-slate-600 dark:text-slate-300 text-xs font-medium">
+              <Upload className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+              <span>Kéo thả hoặc bấm vào đây để tải ảnh vở ghi</span>
+            </div>
+          )}
+        </div>
+
+        {/* BENTO GRID IMAGE GALLERY WITH PHOTOSWIPE */}
+        {imageMetas.length > 0 && (
+          <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">
+            {/* Container PhotoSwipe Gallery (Bento Layout) */}
+            <div
+              className={`grid gap-3 w-full ${
+                imageMetas.length === 1
+                  ? 'grid-cols-1 max-w-xl mx-auto'
+                  : imageMetas.length === 2
+                  ? 'grid-cols-1 sm:grid-cols-2 max-w-2xl mx-auto'
+                  : 'grid-cols-2 md:grid-cols-3 max-w-4xl mx-auto'
+              }`}
+            >
+              {imageMetas.slice(0, 5).map((item, idx) => {
+                const isFeatured = imageMetas.length >= 3 && idx === 0;
+                const isFifthWithMore = idx === 4 && imageMetas.length > 5;
+                const extraCount = imageMetas.length - 4;
+
+                return (
+                  <div
+                    key={idx}
+                    onClick={() => openPhotoSwipe(idx)}
+                    className={`relative group block rounded-2xl overflow-hidden border border-slate-200 dark:border-slate-800 bg-slate-100 dark:bg-slate-950 shadow-xs cursor-zoom-in transition-all duration-200 hover:shadow-md hover:scale-[1.01] ${
+                      isFeatured
+                        ? 'col-span-2 row-span-2 min-h-[240px] sm:min-h-[320px]'
+                        : imageMetas.length >= 3
+                        ? 'col-span-1 row-span-1 min-h-[120px] sm:min-h-[150px]'
+                        : 'aspect-[4/3]'
+                    }`}
+                  >
+                    <img
+                      src={item.url}
+                      alt={`Bài tập trang ${idx + 1}`}
+                      className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105 block"
+                    />
+
+                    {/* Badge Trang */}
+                    <div className="absolute top-2.5 left-2.5 z-10 px-2.5 py-1 bg-black/60 backdrop-blur-xs text-white rounded-full text-[11px] font-bold flex items-center gap-1 pointer-events-none">
+                      <span>Trang {idx + 1}</span>
+                    </div>
+
+                    {/* Nút xóa ảnh */}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveImage(idx);
+                      }}
+                      className="absolute top-2.5 right-2.5 z-20 p-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-xl shadow-md transition-transform hover:scale-110 cursor-pointer"
+                      title="Xóa trang ảnh này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Overlay +N trang nếu số lượng > 5 */}
+                    {isFifthWithMore && (
+                      <div className="absolute inset-0 bg-slate-950/80 backdrop-blur-xs flex flex-col items-center justify-center text-white z-10 pointer-events-none transition-opacity group-hover:bg-slate-950/70">
+                        <span className="text-2xl sm:text-3xl font-extrabold">+ {extraCount}</span>
+                        <span className="text-xs font-bold text-slate-200">trang nữa</span>
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
