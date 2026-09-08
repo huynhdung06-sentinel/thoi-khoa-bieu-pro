@@ -869,14 +869,14 @@ export const HomeworkDocumentWorkspacePanel: React.FC<HomeworkDocumentWorkspaceP
               {imageMetas.map((item, idx) => (
                 <a
                   key={idx}
-                  href={item.url}
+                  href="#"
+                  data-pswp-src={item.url}
                   data-pswp-width={item.width || 1200}
                   data-pswp-height={item.height || 1600}
-                  target="_blank"
-                  rel="noreferrer"
                   className="pswp-gallery-item cursor-pointer"
                   onClick={(e) => {
                     e.preventDefault();
+                    e.stopPropagation();
                     if (lightboxRef.current) {
                       lightboxRef.current.loadAndOpen(idx);
                     }

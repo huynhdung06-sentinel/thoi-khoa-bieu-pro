@@ -348,18 +348,9 @@ export default function App() {
     return () => clearInterval(interval);
   }, [isIntroOpen]);
 
-  // Beforeunload warning if user has multiple unsaved changes
+  // Beforeunload warning disabled to prevent annoying browser reload prompts during image viewing
   useEffect(() => {
-    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
-      const current = getBackupStatus();
-      if (current.unsavedCount >= 3) {
-        e.preventDefault();
-        e.returnValue = 'Bạn có dữ liệu mới chưa tải file sao lưu về máy. Bạn có chắc muốn rời đi?';
-        return e.returnValue;
-      }
-    };
-    window.addEventListener('beforeunload', handleBeforeUnload);
-    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    // Auto-save handles data preservation seamlessly without blocking browser navigation
   }, []);
 
   // Always ensure light mode on html tag
