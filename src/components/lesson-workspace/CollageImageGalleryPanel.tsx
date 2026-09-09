@@ -2,53 +2,16 @@ import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { 
   Trash2, 
   Image as ImageIcon, 
-  RotateCcw,
   ZoomIn,
   X,
   ChevronLeft,
   ChevronRight,
-  Download
+  Download,
+  Loader2,
+  Sparkles
 } from 'lucide-react';
 import { LessonGalleryImage } from '../../types';
-
-// Danh sách ảnh mẫu khởi tạo
-const DEFAULT_SAMPLE_IMAGES: LessonGalleryImage[] = [
-  {
-    id: 'sample-1',
-    url: 'https://picsum.photos/1200/1600?image=1050',
-    title: 'Ảnh 1 (Ảnh Tiêu Điểm Lớn)',
-    width: 1200,
-    height: 1600,
-  },
-  {
-    id: 'sample-2',
-    url: 'https://picsum.photos/1600/1000?image=1015',
-    title: 'Ảnh 2',
-    width: 1600,
-    height: 1000,
-  },
-  {
-    id: 'sample-3',
-    url: 'https://picsum.photos/1600/1000?image=1039',
-    title: 'Ảnh 3',
-    width: 1600,
-    height: 1000,
-  },
-  {
-    id: 'sample-4',
-    url: 'https://picsum.photos/1600/1000?image=1043',
-    title: 'Ảnh 4',
-    width: 1600,
-    height: 1000,
-  },
-  {
-    id: 'sample-5',
-    url: 'https://picsum.photos/1600/1000?image=1056',
-    title: 'Ảnh 5',
-    width: 1600,
-    height: 1000,
-  },
-];
+import { compressImageToDataUrl } from '../../utils/imageUtils';
 
 interface CollageImageGalleryPanelProps {
   images: LessonGalleryImage[];
@@ -64,19 +27,19 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
   lessonTitle = '',
 }) => {
   const [imageList, setImageList] = useState<LessonGalleryImage[]>(() => {
-    if (images && images.length > 0) return images;
-    return DEFAULT_SAMPLE_IMAGES;
+    return Array.isArray(images) ? images : [];
   });
 
   // State xem ảnh phóng to (Pure React - Không phụ thuộc thư viện ngoài)
   const [activeIdx, setActiveIdx] = useState<number | null>(null);
 
   const [isDragOver, setIsDragOver] = useState(false);
+  const [isCompressing, setIsCompressing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   // Đồng bộ khi prop images từ ngoài thay đổi
   useEffect(() => {
-    if (images && images.length > 0) {
+    if (Array.isArray(images)) {
       setImageList(images);
     }
   }, [images]);
@@ -122,44 +85,60 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [activeIdx, handleCloseViewer, handlePrev, handleNext]);
 
-  // Xử lý nạp ảnh từ máy tính (kéo thả hoặc chọn file)
-  const handleFiles = (files: FileList | null) => {
+  // Xử lý nạp ảnh từ máy tính (Tự động nén dung lượng cao trước khi lưu vào JSON)
+  const handleFiles = async (files: FileList | null) => {
     if (!files || files.length === 0) return;
 
-    const newItems: LessonGalleryImage[] = [];
     const validFiles = Array.from(files).filter(f => f.type.startsWith('image/'));
     if (validFiles.length === 0) return;
 
-    let processedCount = 0;
+    setIsCompressing(true);
+    try {
+      const newItems: LessonGalleryImage[] = [];
 
-    validFiles.forEach((file, index) => {
-      const reader = new FileReader();
+      for (let i = 0; i < validFiles.length; i++) {
+        const file = validFiles[i];
+        // Nén ảnh với kích thước tối ưu (max width 1280px, chất lượng 0.8)
+        const compressedDataUrl = await compressImageToDataUrl(file, 1280, 0.8);
 
-      reader.onload = (e) => {
-        const imgUrl = e.target?.result as string;
-        if (!imgUrl) return;
+        // Lấy kích thước thực tế của ảnh nén
+        await new Promise<void>((resolve) => {
+          const tempImg = new Image();
+          tempImg.onload = () => {
+            newItems.push({
+              id: `img-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+              url: compressedDataUrl,
+              title: file.name.replace(/\.[^/.]+$/, ''),
+              width: tempImg.naturalWidth || 1200,
+              height: tempImg.naturalHeight || 900,
+            });
+            resolve();
+          };
+          tempImg.onerror = () => {
+            newItems.push({
+              id: `img-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 7)}`,
+              url: compressedDataUrl,
+              title: file.name.replace(/\.[^/.]+$/, ''),
+              width: 1200,
+              height: 900,
+            });
+            resolve();
+          };
+          tempImg.src = compressedDataUrl;
+        });
+      }
 
-        const tempImg = new Image();
-        tempImg.onload = () => {
-          newItems.push({
-            id: `img-${Date.now()}-${index}-${Math.random().toString(36).substring(2, 7)}`,
-            url: imgUrl,
-            title: file.name.replace(/\.[^/.]+$/, ''),
-            width: tempImg.naturalWidth || 1200,
-            height: tempImg.naturalHeight || 900,
-          });
-
-          processedCount++;
-          if (processedCount === validFiles.length) {
-            updateAndPropagateImages([...imageList, ...newItems]);
-          }
-        };
-
-        tempImg.src = imgUrl;
-      };
-
-      reader.readAsDataURL(file);
-    });
+      if (newItems.length > 0) {
+        updateAndPropagateImages([...imageList, ...newItems]);
+      }
+    } catch (err) {
+      console.error('Lỗi khi nén ảnh:', err);
+    } finally {
+      setIsCompressing(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
   };
 
   // Xóa 1 ảnh
@@ -171,12 +150,6 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
     if (activeIdx !== null && activeIdx >= updated.length) {
       setActiveIdx(updated.length > 0 ? updated.length - 1 : null);
     }
-  };
-
-  // Khôi phục bộ ảnh mẫu
-  const handleResetToDefaultSamples = () => {
-    updateAndPropagateImages(DEFAULT_SAMPLE_IMAGES);
-    setActiveIdx(null);
   };
 
   // Tải ảnh về máy
@@ -212,15 +185,10 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
             </span>
           </div>
 
-          <button
-            type="button"
-            onClick={handleResetToDefaultSamples}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg border border-slate-200 dark:border-slate-700 bg-white hover:bg-slate-50 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 text-xs font-medium cursor-pointer transition-all active:scale-95 shadow-2xs"
-            title="Khôi phục lại danh sách 5 ảnh mẫu ban đầu"
-          >
-            <RotateCcw className="w-3.5 h-3.5 text-slate-500 dark:text-slate-400" />
-            <span>Nạp lại ảnh mẫu</span>
-          </button>
+          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/50 px-2.5 py-1 rounded-lg border border-emerald-200 dark:border-emerald-800 font-medium">
+            <Sparkles className="w-3.5 h-3.5" />
+            <span>Tự động nén siêu nhẹ (~100KB)</span>
+          </div>
         </div>
 
         {lessonTitle && (
@@ -229,30 +197,41 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
           </p>
         )}
 
-        {/* Khung Kéo Thả Upload - Gọn gàng, dễ dùng */}
+        {/* Khung Kéo Thả Upload - Tích hợp nén tự động */}
         <div
           id="dropzone"
-          onClick={() => fileInputRef.current?.click()}
-          onDragEnter={(e) => { e.preventDefault(); setIsDragOver(true); }}
-          onDragOver={(e) => { e.preventDefault(); setIsDragOver(true); }}
+          onClick={() => !isCompressing && fileInputRef.current?.click()}
+          onDragEnter={(e) => { e.preventDefault(); if (!isCompressing) setIsDragOver(true); }}
+          onDragOver={(e) => { e.preventDefault(); if (!isCompressing) setIsDragOver(true); }}
           onDragLeave={(e) => { e.preventDefault(); setIsDragOver(false); }}
           onDrop={(e) => {
             e.preventDefault();
             setIsDragOver(false);
-            if (e.dataTransfer) handleFiles(e.dataTransfer.files);
+            if (!isCompressing && e.dataTransfer) handleFiles(e.dataTransfer.files);
           }}
           className={`border-2 border-dashed rounded-xl py-5 px-4 text-center cursor-pointer transition-all mb-4 ${
-            isDragOver
-              ? 'border-blue-600 bg-blue-100/70 dark:bg-blue-950/50 scale-[1.01]'
-              : 'border-blue-300 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:border-blue-400'
+            isCompressing
+              ? 'border-amber-400 bg-amber-50/70 dark:bg-amber-950/40 cursor-wait'
+              : isDragOver
+                ? 'border-blue-600 bg-blue-100/70 dark:bg-blue-950/50 scale-[1.01]'
+                : 'border-blue-300 dark:border-blue-800/60 bg-blue-50/50 dark:bg-blue-950/20 hover:bg-blue-50 dark:hover:bg-blue-950/40 hover:border-blue-400'
           }`}
         >
-          <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
-            ☁️ Kéo &amp; thả hình ảnh vào đây, hoặc <span className="text-blue-600 dark:text-blue-400 underline font-bold">chọn từ máy tính</span>
-          </p>
-          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Hỗ trợ PNG, JPG, WEBP • Click vào ảnh bất kỳ bên dưới để phóng to tức thì
-          </p>
+          {isCompressing ? (
+            <div className="flex items-center justify-center gap-2 text-amber-700 dark:text-amber-300 font-semibold text-sm">
+              <Loader2 className="w-5 h-5 animate-spin" />
+              <span>Đang nén &amp; tối ưu dung lượng ảnh...</span>
+            </div>
+          ) : (
+            <>
+              <p className="text-sm font-semibold text-slate-800 dark:text-slate-200">
+                ☁️ Kéo &amp; thả hình ảnh vào đây, hoặc <span className="text-blue-600 dark:text-blue-400 underline font-bold">chọn từ máy tính</span>
+              </p>
+              <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                Hệ thống tự động nén tối ưu dung lượng • Nhấp vào ảnh để phóng to
+              </p>
+            </>
+          )}
           <input
             type="file"
             ref={fileInputRef}
@@ -268,10 +247,10 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
           <div className="p-8 text-center bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-800">
             <ImageIcon className="w-10 h-10 mx-auto text-slate-400 mb-2 opacity-60" />
             <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-              Chưa có hình ảnh nào trong thư viện bài học này.
+              Chưa có hình ảnh nào trong bài học này.
             </p>
             <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
-              Hãy bấm vào khung đám mây ở trên để tải ảnh lên hoặc bấm &quot;Nạp lại ảnh mẫu&quot;.
+              Hãy bấm vào khung đám mây ở trên để tải ảnh lên (dung lượng sẽ được tự động nén siêu nhẹ).
             </p>
           </div>
         ) : (
