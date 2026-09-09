@@ -1,0 +1,390 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Local Data Hub - Trạm Thu Thập & Đồng Bộ Dữ Liệu Học Tập</title>
+  <style>
+    :root {
+      --primary: #2563eb;
+      --primary-hover: #1d4ed8;
+      --success: #16a34a;
+      --danger: #dc2626;
+      --bg: #f8fafc;
+      --card-bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --border: #e2e8f0;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      background-color: var(--bg);
+      color: var(--text-main);
+      line-height: 1.5;
+      padding: 24px;
+    }
+    .container { max-width: 960px; margin: 0 auto; }
+    header {
+      background: linear-gradient(135deg, #1e3a8a 0%, #3b82f6 100%);
+      color: white;
+      padding: 24px 28px;
+      border-radius: 16px;
+      box-shadow: 0 10px 25px -5px rgba(37, 99, 235, 0.2);
+      margin-bottom: 24px;
+    }
+    header h1 { font-size: 22px; font-weight: 700; display: flex; align-items: center; gap: 10px; }
+    header p { opacity: 0.9; font-size: 14px; margin-top: 6px; }
+    
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--border);
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.02);
+    }
+    .card-title {
+      font-size: 16px;
+      font-weight: 600;
+      color: var(--text-main);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    .ip-box {
+      background: #eff6ff;
+      border: 1px dashed #60a5fa;
+      padding: 14px 18px;
+      border-radius: 10px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+    .ip-text { font-family: monospace; font-size: 15px; font-weight: 600; color: #1e40af; }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 16px;
+      border-radius: 8px;
+      font-size: 13.5px;
+      font-weight: 600;
+      cursor: pointer;
+      border: none;
+      transition: all 0.15s ease;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--primary); color: white; }
+    .btn-primary:hover { background: var(--primary-hover); }
+    .btn-success { background: var(--success); color: white; }
+    .btn-success:hover { background: #15803d; }
+    .btn-outline { background: white; border: 1px solid var(--border); color: var(--text-main); }
+    .btn-outline:hover { background: #f1f5f9; }
+    .btn-danger { background: #fee2e2; color: var(--danger); border: 1px solid #fca5a5; }
+    .btn-danger:hover { background: #fecaca; }
+    .btn-sm { padding: 6px 12px; font-size: 12.5px; }
+
+    .backup-list { list-style: none; display: flex; flex-direction: column; gap: 12px; }
+    .backup-item {
+      background: white;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px 18px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 14px;
+      transition: box-shadow 0.2s;
+    }
+    .backup-item:hover { box-shadow: 0 4px 12px rgba(0,0,0,0.05); }
+    .item-info h3 { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 4px; }
+    .item-meta { display: flex; gap: 12px; font-size: 13px; color: var(--text-muted); flex-wrap: wrap; }
+    .item-meta span { display: inline-flex; align-items: center; gap: 4px; }
+    .badge {
+      display: inline-block;
+      padding: 2px 8px;
+      border-radius: 6px;
+      font-size: 11.5px;
+      font-weight: 600;
+      background: #e0f2fe;
+      color: #0369a1;
+    }
+    .badge-time { background: #f1f5f9; color: #475569; }
+
+    .item-actions { display: flex; gap: 8px; align-items: center; }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state svg { width: 48px; height: 48px; margin-bottom: 12px; color: #94a3b8; }
+
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      right: 24px;
+      background: #0f172a;
+      color: white;
+      padding: 12px 20px;
+      border-radius: 10px;
+      font-size: 14px;
+      font-weight: 500;
+      display: none;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+      z-index: 1000;
+    }
+
+    /* Modal xem trước */
+    .modal-overlay {
+      position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.5);
+      display: none; align-items: center; justify-content: center;
+      z-index: 999;
+      padding: 20px;
+    }
+    .modal-content {
+      background: white; border-radius: 16px; width: 100%; max-width: 680px;
+      max-height: 85vh; display: flex; flex-direction: column; overflow: hidden;
+      box-shadow: 0 20px 25px -5px rgba(0,0,0,0.2);
+    }
+    .modal-header { padding: 18px 22px; border-bottom: 1px solid var(--border); display: flex; justify-content: space-between; align-items: center; }
+    .modal-body { padding: 22px; overflow-y: auto; font-size: 14px; }
+    .modal-footer { padding: 14px 22px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; background: #f8fafc; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Header -->
+    <header>
+      <h1>🏠 LOCAL DATA HUB - MÁY CHA</h1>
+      <p>Trạm thu nhận dữ liệu học tập nội bộ từ máy con qua mạng Wi-Fi gia đình</p>
+    </header>
+
+    <!-- Card 1: Hướng dẫn kết nối cho máy học sinh -->
+    <div class="card">
+      <div class="card-title">
+        <span>📡 ĐỊA CHỈ NHẬN FILE DỮ LIỆU TỪ MÁY CON</span>
+        <span id="server-status" class="badge" style="background:#dcfce7; color:#15803d;">● Đang hoạt động</span>
+      </div>
+      <p style="font-size: 13.5px; color: var(--text-muted); margin-bottom: 12px;">
+        Trên máy học sinh, nhập địa chỉ bên dưới vào mục <b>"Gửi dữ liệu máy cha"</b> để đồng bộ tự động:
+      </p>
+      <div class="ip-box">
+        <div style="flex: 1; min-width: 280px;">
+          <span style="font-size: 11.5px; color: #1e40af; display: block; font-weight: 700; letter-spacing: 0.5px; text-transform: uppercase; margin-bottom: 4px;">
+            ĐƯỜNG LINK KẾT NỐI (DÁN VÀO MÁY CỦA CON):
+          </span>
+          <div style="display: flex; align-items: center; gap: 8px;">
+            <span id="upload-url-display" class="ip-text" style="font-size: 16px; word-break: break-all; user-select: all;">Đang dò IP mạng LAN...</span>
+          </div>
+          <div id="alt-ips-container" style="display: none; margin-top: 8px; font-size: 12px; color: #475569;">
+            <span>Các IP phụ khác: </span><span id="alt-ips-text" style="font-family: monospace;"></span>
+          </div>
+        </div>
+        <button class="btn btn-primary" onclick="copyUploadUrl()" style="padding: 10px 20px; font-size: 14px;">
+          📋 Sao chép Link
+        </button>
+      </div>
+    </div>
+
+    <!-- Card 2: Danh sách các bản ghi của con gửi về -->
+    <div class="card">
+      <div class="card-title">
+        <span>📂 DANH SÁCH FILE JSON ĐÃ NHẬN (<span id="backup-count">0</span>)</span>
+        <button class="btn btn-outline btn-sm" onclick="loadBackupList()">🔄 Làm mới</button>
+      </div>
+
+      <ul id="backup-list" class="backup-list">
+        <!-- Danh sách file sẽ nạp tự động qua JavaScript -->
+      </ul>
+
+      <div id="empty-state" class="empty-state" style="display: none;">
+        <svg fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M9 13h6m-3-3v6m5 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path>
+        </svg>
+        <p style="font-weight: 600; margin-bottom: 4px;">Chưa có file dữ liệu nào được gửi sang</p>
+        <p style="font-size: 13px;">Khi học sinh bấm nút <b>[ 📤 Gửi JSON ]</b> trên web, dữ liệu sẽ tự động xuất hiện tại đây.</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- Modal hướng dẫn mở trang web -->
+  <div id="open-modal" class="modal-overlay">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h3 style="font-size: 16px; font-weight: 700;">🚀 Mở xem trên thoikhoabieu.pro.vn</h3>
+        <button style="border:none; background:none; font-size: 20px; cursor:pointer;" onclick="closeModal()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 14px; border-radius: 10px; margin-bottom: 16px;">
+          <p style="font-weight: 600; color: #166534; margin-bottom: 4px;">✓ Đã sao chép sẵn toàn bộ dữ liệu vào Clipboard của máy tính!</p>
+          <p style="font-size: 13px; color: #15803d;">Bạn có thể mở web và dán trực tiếp hoặc dùng nút tải file JSON về để chọn vào web.</p>
+        </div>
+        <p style="font-size: 14px; margin-bottom: 12px; line-height: 1.6;">
+          <b>Cách xem nhanh nhất:</b><br/>
+          1. Bấm nút <b>[ 🚀 Mở Trang Web ]</b> bên dưới.<br/>
+          2. Trên web <i>thoikhoabieu.pro.vn</i>, mở menu <b>Cài đặt (hoặc Quản lý)</b> &rarr; Chọn <b>"Nhập sao lưu"</b> &rarr; Chọn file vừa tải về (hoặc Dán dữ liệu).<br/>
+          3. Toàn bộ bài học, hình ảnh và bài làm của con sẽ được hiển thị ngay lập tức!
+        </p>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-outline" onclick="closeModal()">Đóng</button>
+        <a id="btn-visit-web" href="https://thoikhoabieu.pro.vn" target="_blank" class="btn btn-success">
+          🚀 Mở thoikhoabieu.pro.vn
+        </a>
+      </div>
+    </div>
+  </div>
+
+  <div id="toast" class="toast"></div>
+
+  <script>
+    let currentUploadUrl = '';
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.innerText = msg;
+      t.style.display = 'block';
+      setTimeout(() => { t.style.display = 'none'; }, 3000);
+    }
+
+    async function fetchServerInfo() {
+      try {
+        const res = await fetch('/api/info');
+        const data = await res.json();
+        
+        // Ưu tiên hiển thị link LAN chính
+        currentUploadUrl = data.uploadUrl || (window.location.origin + '/api/upload');
+        document.getElementById('upload-url-display').innerText = currentUploadUrl;
+
+        // Nếu máy có nhiều card mạng LAN khác (ví dụ vừa cắm dây vừa Wi-Fi)
+        if (data.lanIps && data.lanIps.length > 1) {
+          const altContainer = document.getElementById('alt-ips-container');
+          const altText = document.getElementById('alt-ips-text');
+          const otherUrls = data.lanIps.slice(1).map(ip => `http://${ip}:${data.port}/api/upload`);
+          altText.innerText = otherUrls.join(', ');
+          altContainer.style.display = 'block';
+        }
+      } catch (err) {
+        // Dự phòng khi chạy không qua API
+        const fallbackUrl = window.location.origin + '/api/upload';
+        currentUploadUrl = fallbackUrl;
+        document.getElementById('upload-url-display').innerText = fallbackUrl;
+      }
+    }
+
+    function copyUploadUrl() {
+      if (!currentUploadUrl) return;
+      navigator.clipboard.writeText(currentUploadUrl).then(() => {
+        showToast('✓ Đã chép Link kết nối! Hãy dán vào máy của con.');
+      });
+    }
+
+    async function loadBackupList() {
+      try {
+        const res = await fetch('/api/backups');
+        const data = await res.json();
+        const listEl = document.getElementById('backup-list');
+        const emptyEl = document.getElementById('empty-state');
+        const countEl = document.getElementById('backup-count');
+
+        if (!data.files || data.files.length === 0) {
+          listEl.innerHTML = '';
+          emptyEl.style.display = 'block';
+          countEl.innerText = '0';
+          return;
+        }
+
+        emptyEl.style.display = 'none';
+        countEl.innerText = data.files.length;
+        
+        listEl.innerHTML = data.files.map(file => {
+          const dateStr = new Date(file.createdAt).toLocaleString('vi-VN');
+          const sizeKb = (file.sizeBytes / 1024).toFixed(1) + ' KB';
+          const title = file.studentName ? `${file.studentName} ${file.className ? '(' + file.className + ')' : ''}` : file.fileName;
+
+          return `
+            <li class="backup-item">
+              <div class="item-info">
+                <h3>🧑‍🎓 ${title}</h3>
+                <div class="item-meta">
+                  <span class="badge badge-time">🕒 ${dateStr}</span>
+                  <span>📦 ${sizeKb}</span>
+                  ${file.lessonCount ? `<span>📚 ${file.lessonCount} bài học</span>` : ''}
+                </div>
+              </div>
+              <div class="item-actions">
+                <button class="btn btn-success btn-sm" onclick="openOnWeb('${file.fileName}')">
+                  🚀 Mở trên thoikhoabieu.pro.vn
+                </button>
+                <a href="/api/backups/${encodeURIComponent(file.fileName)}" download="${file.fileName}" class="btn btn-outline btn-sm">
+                  📥 Tải JSON
+                </a>
+                <button class="btn btn-danger btn-sm" onclick="deleteBackup('${file.fileName}')">
+                  🗑️
+                </button>
+              </div>
+            </li>
+          `;
+        }).join('');
+      } catch (err) {
+        console.error('Lỗi nạp danh sách file:', err);
+      }
+    }
+
+    async function openOnWeb(fileName) {
+      try {
+        // Tải nội dung JSON của file
+        const res = await fetch(`/api/backups/${encodeURIComponent(fileName)}`);
+        const jsonContent = await res.text();
+        
+        // Tự động chép dữ liệu vào Clipboard của phụ huynh
+        await navigator.clipboard.writeText(jsonContent);
+
+        // Mở modal hướng dẫn và kích hoạt tab web
+        document.getElementById('open-modal').style.display = 'flex';
+      } catch (err) {
+        showToast('⚠️ Không thể đọc file: ' + err.message);
+      }
+    }
+
+    function closeModal() {
+      document.getElementById('open-modal').style.display = 'none';
+    }
+
+    async function deleteBackup(fileName) {
+      if (!confirm(`Bạn có chắc muốn xóa bản lưu "${fileName}"?`)) return;
+      try {
+        const res = await fetch(`/api/backups/${encodeURIComponent(fileName)}`, { method: 'DELETE' });
+        const result = await res.json();
+        if (result.success) {
+          showToast('✓ Đã xóa file thành công!');
+          loadBackupList();
+        } else {
+          showToast('⚠️ Không thể xóa file');
+        }
+      } catch (err) {
+        showToast('⚠️ Lỗi: ' + err.message);
+      }
+    }
+
+    // Khởi chạy khi nạp trang
+    fetchServerInfo();
+    loadBackupList();
+
+    // Tự động kiểm tra file mới mỗi 5 giây
+    setInterval(loadBackupList, 5000);
+  </script>
+</body>
+</html>

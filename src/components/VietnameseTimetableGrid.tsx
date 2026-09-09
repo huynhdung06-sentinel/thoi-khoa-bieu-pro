@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { PeriodInfo, TimetableSlot, LessonPlan, StudyRecord, UserRole, DocumentItem, Subject } from '../types';
 import { STANDARD_PERIODS, SUBJECTS_LIST } from '../data/mockData';
 import { getVietnamCurrentMondayStr, getVietnamTimeParts } from '../utils/dateUtils';
-import { Clock, Edit3, Eye, Share2, Loader2 } from 'lucide-react';
+import { Clock, Edit3, Eye, Share2, Loader2, Send } from 'lucide-react';
 
 interface VietnameseTimetableGridProps {
   periods?: PeriodInfo[];
@@ -24,6 +24,7 @@ interface VietnameseTimetableGridProps {
   onOpenEditPeriods?: () => void;
   onShareReport?: () => void;
   isCapturing?: boolean;
+  onOpenSendToParent?: () => void;
 }
 
 export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = React.memo(({
@@ -39,6 +40,7 @@ export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = R
   onOpenEditPeriods,
   onShareReport,
   isCapturing,
+  onOpenSendToParent,
 }) => {
   // Mode switch: 'viewer' (Chế độ xem) vs 'editor' (Chế độ chỉnh sửa)
   const [timetableMode, setTimetableMode] = useState<'viewer' | 'editor'>('viewer');
@@ -301,6 +303,18 @@ export const VietnameseTimetableGrid: React.FC<VietnameseTimetableGridProps> = R
               <span>Editor (Chỉnh sửa)</span>
             </button>
           </div>
+
+          {onOpenSendToParent && (
+            <button
+              type="button"
+              onClick={onOpenSendToParent}
+              className="flex items-center gap-1.5 px-3 py-2 bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white rounded-lg text-xs font-extrabold transition-all shadow-xs cursor-pointer active:scale-95"
+              title="Gửi toàn bộ bài học và hình ảnh bài làm sang Server Máy Cha qua mạng Wi-Fi nội bộ"
+            >
+              <Send className="w-3.5 h-3.5" />
+              <span>Gửi Bài Học</span>
+            </button>
+          )}
         </div>
       </div>
 

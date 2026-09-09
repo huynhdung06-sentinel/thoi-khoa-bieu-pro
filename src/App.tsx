@@ -77,6 +77,7 @@ import { ParentPinChallengeModal } from './components/ParentPinChallengeModal';
 import { ParentDashboardModal } from './components/ParentDashboardModal';
 import { AboutStoryModal } from './components/AboutStoryModal';
 import { BackupReminderModal } from './components/BackupReminderModal';
+import { SendToParentModal } from './components/SendToParentModal';
 import { FamilyCodeCardModal } from './components/FamilyCodeCardModal';
 import { UnifiedFamilyModal } from './components/UnifiedFamilyModal';
 import { 
@@ -327,6 +328,7 @@ export default function App() {
   // Local-First Backup Sentinel
   const [backupStatus, setBackupStatus] = useState(() => getBackupStatus());
   const [showBackupReminderModal, setShowBackupReminderModal] = useState<boolean>(false);
+  const [showSendToParentModal, setShowSendToParentModal] = useState<boolean>(false);
 
   // Periodic and change-based backup status refresh
   const refreshBackupStatus = () => {
@@ -1947,6 +1949,21 @@ export default function App() {
     }
   };
 
+  // Helper tạo trọn gói JSON đồng bộ sang máy cha
+  const getBackupPackageForParent = () => {
+    return createBackupPackage({
+      family,
+      classInfo,
+      timetableSlots,
+      subjects,
+      periods,
+      lessons,
+      lessonPlans,
+      studyRecords,
+      documents,
+    });
+  };
+
   // Import JSON Data
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
     // CRITICAL (Module 4B): Parent role is strictly READ-ONLY. Never allow importing to overwrite canonical data.
@@ -2553,6 +2570,7 @@ export default function App() {
                 onOpenEditPeriods={() => setIsEditPeriodsOpen(true)}
                 onShareReport={captureTimetable}
                 isCapturing={isCapturingReport}
+                onOpenSendToParent={() => setShowSendToParentModal(true)}
                 onViewSubjectDocuments={(subj) => {
                   setSelectedSubjectForLibrary(subj);
                   setSelectedLessonIdForLibrary(undefined);
@@ -2978,6 +2996,15 @@ export default function App() {
         />
       )}
 
+
+      {/* Modal: Gửi Bài Học Sang Server Máy Cha */}
+      <SendToParentModal
+        isOpen={showSendToParentModal}
+        onClose={() => setShowSendToParentModal(false)}
+        getBackupData={getBackupPackageForParent}
+        studentName={classInfo.studentName || activeChildProfile?.name || 'Học sinh'}
+        className={classInfo.className || 'Lớp học'}
+      />
 
     </div>
   );
