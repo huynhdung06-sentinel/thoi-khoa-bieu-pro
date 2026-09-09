@@ -540,6 +540,53 @@ export default function App() {
       }
     }
 
+    // 2. AUTOMATIC HUB LOADER: Tự động nạp dữ liệu bài học khi mở từ Server Máy Cha (Hub 9090)
+    const hubFetchUrl = urlParams.get('hub_fetch_url');
+    if (hubFetchUrl) {
+      fetch(hubFetchUrl)
+        .then(res => res.json())
+        .then(async (jsonData) => {
+          const { isValid, data } = validateAndParseBackup(JSON.stringify(jsonData));
+          if (isValid && data) {
+            const targetChildId = (data.family?.children?.[0]?.id) || 'child_default';
+            await Promise.all([
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.CLASS_INFO, data.classInfo),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.SUBJECTS, data.subjects),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.TIMETABLE_SLOTS, data.timetableSlots),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.PERIODS, data.periods),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.LESSONS, data.lessons),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.LESSON_PLANS, data.lessonPlans),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.STUDY_RECORDS, data.studyRecords),
+              saveChildLocalAppData(targetChildId, APP_DATA_KEYS.DOCUMENTS, data.documents),
+            ]);
+
+            setClassInfo(data.classInfo as ClassInfo);
+            setSubjects(data.subjects as Subject[]);
+            setTimetableSlots(data.timetableSlots as TimetableSlot[]);
+            setPeriods(data.periods as PeriodInfo[]);
+            setLessons(data.lessons as Lesson[]);
+            setLessonPlans(data.lessonPlans as LessonPlan[]);
+            setStudyRecords(data.studyRecords as StudyRecord[]);
+            setDocuments(data.documents as DocumentItem[]);
+
+            setCurrentRole('admin');
+            setIsIntroOpen(false);
+
+            try {
+              confetti();
+            } catch {}
+
+            // Dọn sạch URL
+            const url = new URL(window.location.href);
+            url.searchParams.delete('hub_fetch_url');
+            window.history.replaceState({}, '', url.toString());
+          }
+        })
+        .catch(err => {
+          console.warn('[HubAutoLoader] Lỗi nạp trực tiếp từ Hub:', err);
+        });
+    }
+
     setIsCloudLoading(false);
 
   }, [isAuthLoading, family.children]);

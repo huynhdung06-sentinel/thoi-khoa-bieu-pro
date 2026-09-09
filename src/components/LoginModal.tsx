@@ -36,7 +36,17 @@ export const LoginModal: React.FC<LoginModalProps> = ({
   onParentOfflineImport,
 }) => {
   const [currentSlide, setCurrentSlide] = useState(0);
-  const [activeTab, setActiveTab] = useState<'student' | 'parent'>('student');
+  const [activeTab, setActiveTab] = useState<'student' | 'parent'>(() => {
+    if (typeof window !== 'undefined') {
+      const params = new URLSearchParams(window.location.search);
+      const roleParam = (params.get('role') || '').toLowerCase();
+      const tabParam = (params.get('tab') || '').toLowerCase();
+      if (roleParam === 'parent' || tabParam === 'parent' || tabParam === 'offline_import') {
+        return 'parent';
+      }
+    }
+    return 'student';
+  });
   
   // Parent Drag & Drop States
   const [parentError, setParentError] = useState('');
