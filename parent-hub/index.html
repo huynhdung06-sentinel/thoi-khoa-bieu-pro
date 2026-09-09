@@ -219,36 +219,6 @@
     </div>
   </div>
 
-  <!-- Modal hướng dẫn mở trang web -->
-  <div id="open-modal" class="modal-overlay">
-    <div class="modal-content">
-      <div class="modal-header">
-        <h3 style="font-size: 16px; font-weight: 700; color: #1e293b;">🚀 Mở Xem Bài Của Con Trên Web</h3>
-        <button style="border:none; background:none; font-size: 20px; cursor:pointer; color: #64748b;" onclick="closeModal()">✕</button>
-      </div>
-      <div class="modal-body">
-        <div style="background: #f0fdf4; border: 1px solid #bbf7d0; padding: 14px; border-radius: 12px; margin-bottom: 16px;">
-          <p style="font-weight: 700; color: #166534; margin-bottom: 4px;">✓ Đã tải file JSON của con về máy tính!</p>
-          <p style="font-size: 13px; color: #15803d; line-height: 1.5;">Trình duyệt đã mở sẵn trang web học tập tại <b>Tab Phụ Huynh</b>.</p>
-        </div>
-        <div style="background: #f8fafc; border: 1px solid #e2e8f0; padding: 14px; border-radius: 12px; margin-bottom: 14px;">
-          <p style="font-size: 13.5px; line-height: 1.6; color: #334155; margin: 0;">
-            👉 <b>Các bước đơn giản:</b><br/>
-            1. Trên tab web vừa mở ra (Tab <b>Phụ Huynh</b>), bấm nút xanh <b>[Xem Tiến Độ Từ File (.JSON)]</b>.<br/>
-            2. Chọn file <b>.json</b> vừa tải về (trong mục <i>Downloads</i> của máy tính).<br/>
-            3. Toàn bộ thời khóa biểu, mục lục bài học và hình ảnh bài làm của con sẽ hiện ra đầy đủ!
-          </p>
-        </div>
-      </div>
-      <div class="modal-footer">
-        <button class="btn btn-outline" onclick="closeModal()">Đã hiểu</button>
-        <a id="btn-visit-web" href="https://thoikhoabieu.pro.vn/?role=parent&tab=offline_import" target="_blank" class="btn btn-success" style="text-decoration: none;">
-          🌐 Bấm Vào Tab Phụ Huynh
-        </a>
-      </div>
-    </div>
-  </div>
-
   <div id="toast" class="toast"></div>
 
   <script>
@@ -348,29 +318,14 @@
 
     async function openOnWeb(fileName) {
       try {
-        // 1. Tự động kích hoạt tải file về máy
-        const downloadLink = document.createElement('a');
-        downloadLink.href = `/api/backups/${encodeURIComponent(fileName)}`;
-        downloadLink.download = fileName;
-        document.body.appendChild(downloadLink);
-        downloadLink.click();
-        downloadLink.remove();
-
-        // 2. Mở tab web mới vào thẳng Viewer trên thoikhoabieu.pro.vn và tự động nạp bài
+        // Mở tab web mới vào thẳng Viewer trên thoikhoabieu.pro.vn và tự động nạp bài
         const hubApiUrl = `${window.location.protocol}//${window.location.host}/api/backups/${encodeURIComponent(fileName)}`;
         const targetUrl = `https://thoikhoabieu.pro.vn/?role=parent&tab=offline_import&hub_fetch_url=${encodeURIComponent(hubApiUrl)}`;
         window.open(targetUrl, '_blank');
-
-        // 3. Hiển thị hộp thoại hướng dẫn
-        document.getElementById('btn-visit-web').href = targetUrl;
-        document.getElementById('open-modal').style.display = 'flex';
+        showToast('🚀 Đang mở bài học của con trên trang web...');
       } catch (err) {
         showToast('⚠️ Có lỗi xảy ra: ' + err.message);
       }
-    }
-
-    function closeModal() {
-      document.getElementById('open-modal').style.display = 'none';
     }
 
     async function deleteBackup(fileName) {
