@@ -21,13 +21,26 @@ interface CollageImageGalleryPanelProps {
   subjectName?: string;
 }
 
+const filterValidGalleryImages = (list: LessonGalleryImage[] | undefined): LessonGalleryImage[] => {
+  if (!Array.isArray(list)) return [];
+  return list.filter(img => 
+    img && 
+    typeof img.url === 'string' && 
+    img.url.trim() !== '' &&
+    !img.id?.startsWith('sample-') &&
+    !img.url.includes('picsum.photos') &&
+    !img.title?.includes('Ảnh Tiêu Điểm Lớn') &&
+    !img.title?.includes('Ảnh 1 (Ảnh Tiêu Điểm Lớn)')
+  );
+};
+
 export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> = ({
   images,
   onUpdateImages,
   lessonTitle = '',
 }) => {
   const [imageList, setImageList] = useState<LessonGalleryImage[]>(() => {
-    return Array.isArray(images) ? images : [];
+    return filterValidGalleryImages(images);
   });
 
   // State xem ảnh phóng to (Pure React - Không phụ thuộc thư viện ngoài)
@@ -37,10 +50,13 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
   const [isCompressing, setIsCompressing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  // Đồng bộ khi prop images từ ngoài thay đổi
+  // Đồng bộ khi prop images từ ngoài thay đổi và tự động dọn sạch ảnh mẫu cũ
   useEffect(() => {
-    if (Array.isArray(images)) {
-      setImageList(images);
+    const cleaned = filterValidGalleryImages(images);
+    setImageList(cleaned);
+    // Nếu trong dữ liệu truyền vào có ảnh mẫu cũ, tự động lưu lại danh sách sạch
+    if (Array.isArray(images) && images.length > cleaned.length) {
+      onUpdateImages(cleaned);
     }
   }, [images]);
 

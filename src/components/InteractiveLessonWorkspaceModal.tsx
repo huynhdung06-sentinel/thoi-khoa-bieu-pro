@@ -500,7 +500,10 @@ export const InteractiveLessonWorkspaceModal: React.FC<InteractiveLessonWorkspac
       setPdfPageEnd(lesson.pdfEndPage || startP + 4);
       setPdfCurrentViewPage(startP);
       setHomeworkImages(lesson.completedHomeworkImages || []);
-      setGalleryImages(lesson.galleryImages || []);
+      const cleanInitialGallery = (lesson.galleryImages || []).filter(
+        img => img && typeof img.url === 'string' && img.url.trim() !== '' && !img.id?.startsWith('sample-') && !img.url.includes('picsum.photos')
+      );
+      setGalleryImages(cleanInitialGallery);
       
       // Initialize Textbook Links (Drive, Cloud, OneDrive, Hành Trang Số...)
       let initialLinks: TextbookLinkItem[] = [];
