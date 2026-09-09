@@ -90,6 +90,7 @@ import {
 import { BookOpen, ShieldAlert, Sparkles, CheckCircle2, FileText, Award, Calendar, BarChart3, GraduationCap } from 'lucide-react';
 
 const STORAGE_KEY_PREFIX = 'mindmap_school_v2_';
+const CURRENT_APP_DATA_VERSION = 3;
 
 const getParentPinFromStorage = (fallback: string = '1234'): string => {
   try {
@@ -567,7 +568,8 @@ export default function App() {
           getChildLocalAppData<Lesson[]>(id, APP_DATA_KEYS.LESSONS),
           getChildLocalAppData<LessonPlan[]>(id, APP_DATA_KEYS.LESSON_PLANS),
           getChildLocalAppData<StudyRecord[]>(id, APP_DATA_KEYS.STUDY_RECORDS),
-          getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS)
+          getChildLocalAppData<DocumentItem[]>(id, APP_DATA_KEYS.DOCUMENTS),
+          getChildLocalAppData<number>(id, APP_DATA_KEYS.SCHEMA_VERSION)
         ]) : Promise.all([
           getLocalAppData<ClassInfo>(APP_DATA_KEYS.CLASS_INFO),
           getLocalAppData<Subject[]>(APP_DATA_KEYS.SUBJECTS),
@@ -576,7 +578,8 @@ export default function App() {
           getLocalAppData<Lesson[]>(APP_DATA_KEYS.LESSONS),
           getLocalAppData<LessonPlan[]>(APP_DATA_KEYS.LESSON_PLANS),
           getLocalAppData<StudyRecord[]>(APP_DATA_KEYS.STUDY_RECORDS),
-          getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS)
+          getLocalAppData<DocumentItem[]>(APP_DATA_KEYS.DOCUMENTS),
+          getLocalAppData<number>(APP_DATA_KEYS.SCHEMA_VERSION)
         ]));
 
         if (!isMounted) return;
@@ -591,7 +594,8 @@ export default function App() {
             localLessons,
             localLessonPlans,
             localStudyRecords,
-            localDocuments
+            localDocuments,
+            localSchemaVersion
           ] = localResult;
 
           const isCompleteCanonicalDataset = 
@@ -606,11 +610,61 @@ export default function App() {
 
           if (isCompleteCanonicalDataset) {
             localDataFound = true;
+
+            const isParentAdmin = currentRole === 'admin';
+            const saveLocalFn = (key: any, data: any) => {
+              if (isParentAdmin && id) {
+                return saveChildLocalAppData(id, key, data);
+              }
+              return saveLocalAppData(key, data);
+            };
+
+            let finalLessons = localLessons;
+
+            // SMART MERGE: Nếu bản lưu trong máy cũ hơn bản code (hoặc chưa có version),
+            // tự động cập nhật bài học & hình ảnh mẫu mới nhất từ code mà không làm mất bài học học sinh tự tạo!
+            if (!localSchemaVersion || localSchemaVersion < CURRENT_APP_DATA_VERSION) {
+              const codeLessonsMap = new Map(INITIAL_LESSONS_BANK.map((l) => [l.id, l]));
+
+              const updatedExisting = localLessons.map((existingLesson) => {
+                const codeLesson = codeLessonsMap.get(existingLesson.id);
+                if (!codeLesson) return existingLesson; // Bài học do người dùng tự tạo -> giữ nguyên 100%
+
+                return {
+                  ...codeLesson,
+                  ...existingLesson,
+                  // Bảo tồn toàn bộ dữ liệu làm bài và ghi chú cá nhân của học sinh
+                  completedHomeworkImages: existingLesson.completedHomeworkImages || codeLesson.completedHomeworkImages || [],
+                  personalNote: existingLesson.personalNote || codeLesson.personalNote,
+                  isBookmarked: existingLesson.isBookmarked ?? codeLesson.isBookmarked,
+                  // Cập nhật thư viện ảnh mẫu & các khối nội dung mới nhất từ code nếu chưa có
+                  galleryImages: (existingLesson.galleryImages && existingLesson.galleryImages.length > 0)
+                    ? existingLesson.galleryImages
+                    : codeLesson.galleryImages,
+                  sections: (existingLesson.sections && existingLesson.sections.length > 0)
+                    ? existingLesson.sections
+                    : codeLesson.sections,
+                };
+              });
+
+              // Bổ sung các bài học mới toanh có trong code mà máy học sinh chưa có
+              const existingIds = new Set(localLessons.map((l) => l.id));
+              const missingNewLessons = INITIAL_LESSONS_BANK.filter((l) => !existingIds.has(l.id));
+
+              finalLessons = [...updatedExisting, ...missingNewLessons];
+
+              // Lưu ngay phiên bản mới và danh sách bài học đã hòa trộn vào IndexedDB
+              Promise.all([
+                saveLocalFn(APP_DATA_KEYS.LESSONS, finalLessons),
+                saveLocalFn(APP_DATA_KEYS.SCHEMA_VERSION, CURRENT_APP_DATA_VERSION),
+              ]).catch((e) => console.warn('Lỗi lưu IndexedDB sau Smart Merge:', e));
+            }
+
             setClassInfo(localClassInfo);
             setTimetableSlots(localTimetableSlots);
             setSubjects(localSubjects);
             setPeriods(localPeriods);
-            setLessons(localLessons);
+            setLessons(finalLessons);
             setLessonPlans(localLessonPlans);
             setStudyRecords(localStudyRecords);
             setDocuments(localDocuments);
@@ -663,6 +717,7 @@ export default function App() {
             saveLocalFn(APP_DATA_KEYS.LESSON_PLANS, defaultPlans),
             saveLocalFn(APP_DATA_KEYS.STUDY_RECORDS, defaultRecords),
             saveLocalFn(APP_DATA_KEYS.DOCUMENTS, INITIAL_DOCUMENTS),
+            saveLocalFn(APP_DATA_KEYS.SCHEMA_VERSION, CURRENT_APP_DATA_VERSION),
           ]).catch(e => console.warn('Lỗi ghi Local IndexedDB init:', e));
         }
       } catch (err) {

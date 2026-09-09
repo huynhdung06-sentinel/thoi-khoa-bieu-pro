@@ -63,6 +63,7 @@ export const APP_DATA_KEYS = {
   LESSON_PLANS: 'lessonPlans',
   STUDY_RECORDS: 'studyRecords',
   DOCUMENTS: 'documents',
+  SCHEMA_VERSION: 'schemaVersion',
 } as const;
 
 export type AppDataKey = (typeof APP_DATA_KEYS)[keyof typeof APP_DATA_KEYS] | string;
