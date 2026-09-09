@@ -113,14 +113,6 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
     };
   }, [imageList]);
 
-  // Hàm mở lightbox chủ động theo vị trí ảnh để tránh click bị kẹt
-  const handleOpenPhotoSwipeAt = (index: number, e: React.MouseEvent) => {
-    e.preventDefault();
-    if (lightboxRef.current) {
-      lightboxRef.current.loadAndOpen(index);
-    }
-  };
-
   // Hàm cập nhật danh sách ảnh và đẩy ra ngoài lưu trữ
   const updateAndPropagateImages = (newList: LessonGalleryImage[]) => {
     setImageList(newList);
@@ -303,7 +295,6 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
                     href={img.url}
                     data-pswp-width={img.width || 1200}
                     data-pswp-height={img.height || 900}
-                    onClick={(e) => handleOpenPhotoSwipeAt(index, e)}
                     className="pswp-gallery-item block w-full h-full cursor-zoom-in relative"
                     title={img.title || `Ảnh ${index + 1} - Bấm để phóng to`}
                   >
