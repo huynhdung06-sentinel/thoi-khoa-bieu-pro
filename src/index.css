@@ -121,4 +121,10 @@ html:not(.dark) .light-theme-soft-border {
   margin-bottom: 0.4em !important;
 }
 
+/* Đảm bảo PhotoSwipe Lightbox luôn nổi lên trên modal và thanh công cụ */
+.pswp {
+  --pswp-root-z-index: 999999 !important;
+  z-index: 999999 !important;
+}
+
 

@@ -84,20 +84,24 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
     }
   }, [images]);
 
-  // 🟢 1. Khởi tạo PhotoSwipe v5 Lightbox chuẩn 150ms animation theo đúng code mẫu của người dùng
+  // 🟢 1. Khởi tạo PhotoSwipe v5 Lightbox chuẩn 150ms animation theo đúng code mẫu
   useEffect(() => {
     if (imageList.length === 0) return;
 
+    // Khởi tạo lightbox
     const lightbox = new PhotoSwipeLightbox({
       gallery: '#gallery-collage',
       children: 'a.pswp-gallery-item',
       pswpModule: PhotoSwipe,
+      showHideAnimationType: 'zoom',
       showAnimationDuration: 150,
       hideAnimationDuration: 150,
       zoomAnimationDuration: 150,
-      bgOpacity: 0.92,
+      bgOpacity: 0.94,
       wheelToZoom: true,
       imageClickAction: 'zoom',
+      tapAction: 'toggle-controls',
+      doubleTapAction: 'zoom',
     });
 
     lightbox.init();
@@ -108,6 +112,14 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
       lightboxRef.current = null;
     };
   }, [imageList]);
+
+  // Hàm mở lightbox chủ động theo vị trí ảnh để tránh click bị kẹt
+  const handleOpenPhotoSwipeAt = (index: number, e: React.MouseEvent) => {
+    e.preventDefault();
+    if (lightboxRef.current) {
+      lightboxRef.current.loadAndOpen(index);
+    }
+  };
 
   // Hàm cập nhật danh sách ảnh và đẩy ra ngoài lưu trữ
   const updateAndPropagateImages = (newList: LessonGalleryImage[]) => {
@@ -291,10 +303,9 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
                     href={img.url}
                     data-pswp-width={img.width || 1200}
                     data-pswp-height={img.height || 900}
-                    target="_blank"
-                    rel="noreferrer"
+                    onClick={(e) => handleOpenPhotoSwipeAt(index, e)}
                     className="pswp-gallery-item block w-full h-full cursor-zoom-in relative"
-                    title={img.title || `Ảnh ${index + 1} - Bấm để phóng to PhotoSwipe`}
+                    title={img.title || `Ảnh ${index + 1} - Bấm để phóng to`}
                   >
                     <img
                       src={img.url}
