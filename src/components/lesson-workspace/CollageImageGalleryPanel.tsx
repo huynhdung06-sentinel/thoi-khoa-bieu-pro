@@ -84,24 +84,20 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
     }
   }, [images]);
 
-  // 🟢 1. Khởi tạo PhotoSwipe v5 Lightbox chuẩn 150ms animation theo đúng code mẫu
+  // 🟢 1. Khởi tạo PhotoSwipe (Tốc độ mở nhanh 150ms) - Theo đúng mẫu HTML chuẩn
   useEffect(() => {
     if (imageList.length === 0) return;
 
-    // Khởi tạo lightbox
     const lightbox = new PhotoSwipeLightbox({
-      gallery: '#gallery-collage',
-      children: 'a.pswp-gallery-item',
-      pswpModule: PhotoSwipe,
-      showHideAnimationType: 'zoom',
+      gallery: '#gallery',
+      children: 'a',
+      pswpModule: () => import('photoswipe'),
       showAnimationDuration: 150,
       hideAnimationDuration: 150,
       zoomAnimationDuration: 150,
+      // Đảm bảo background đủ mờ và hỗ trợ zoom chuẩn
       bgOpacity: 0.94,
       wheelToZoom: true,
-      imageClickAction: 'zoom',
-      tapAction: 'toggle-controls',
-      doubleTapAction: 'zoom',
     });
 
     lightbox.init();
@@ -277,52 +273,40 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
           </div>
         ) : (
           <div
-            id="gallery-collage"
-            className="pswp-gallery-grid max-h-[580px] overflow-y-auto p-2.5 sm:p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/60 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[1.2fr_1fr_1fr] auto-rows-[220px] gap-3"
+            id="gallery"
+            className="pswp-gallery-grid max-h-[540px] overflow-y-auto p-2.5 sm:p-3 border border-slate-200 dark:border-slate-800 rounded-xl bg-slate-50 dark:bg-slate-900/60 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-[1.2fr_1fr_1fr] auto-rows-[220px] gap-3"
           >
             {imageList.map((img, index) => {
-              // 👑 Ảnh đầu tiên: Ô lớn bên trái chiếm 2 hàng trên màn hình vừa và lớn
+              // 👑 Ảnh đầu tiên: Ô lớn bên trái chiếm 2 hàng
               const isFirst = index === 0;
 
               return (
-                <div
+                <a
                   key={img.id}
-                  className={`relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800 shadow-2xs ${
+                  href={img.url}
+                  data-pswp-width={img.width || 1200}
+                  data-pswp-height={img.height || 900}
+                  target="_blank"
+                  rel="noreferrer"
+                  className={`relative group rounded-lg overflow-hidden border border-slate-200 dark:border-slate-700/80 bg-slate-100 dark:bg-slate-800 shadow-2xs block cursor-zoom-in ${
                     isFirst ? 'md:col-start-1 md:col-end-2 md:row-span-2' : ''
                   }`}
+                  title={img.title || `Ảnh ${index + 1} - Bấm để phóng to`}
                 >
-                  <a
-                    href={img.url}
-                    data-pswp-width={img.width || 1200}
-                    data-pswp-height={img.height || 900}
-                    className="pswp-gallery-item block w-full h-full cursor-zoom-in relative"
-                    title={img.title || `Ảnh ${index + 1} - Bấm để phóng to`}
-                  >
-                    <img
-                      src={img.url}
-                      alt={img.title || `Ảnh ${index + 1}`}
-                      className="w-full h-full object-cover block transition-transform duration-300 ease-out group-hover:scale-105"
-                      loading="lazy"
-                    />
+                  <img
+                    src={img.url}
+                    alt={img.title || `Ảnh ${index + 1}`}
+                    className="w-full h-full object-cover block transition-transform duration-300 ease-out group-hover:scale-105"
+                    loading="lazy"
+                  />
 
-                    {/* Lớp phủ biểu tượng kính lúp phóng to khi hover */}
-                    <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
-                      <div className="p-2 rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs flex items-center gap-1.5 text-xs font-bold">
-                        <ZoomIn className="w-4 h-4 text-blue-600" />
-                        <span className="hidden sm:inline">Phóng to</span>
-                      </div>
+                  {/* Lớp phủ biểu tượng kính lúp phóng to khi hover */}
+                  <div className="absolute inset-0 bg-slate-900/30 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center pointer-events-none">
+                    <div className="p-2 rounded-full bg-white/90 text-slate-800 shadow-md backdrop-blur-xs flex items-center gap-1.5 text-xs font-bold">
+                      <ZoomIn className="w-4 h-4 text-blue-600" />
+                      <span className="hidden sm:inline">Phóng to</span>
                     </div>
-                  </a>
-
-                  {/* Nút xóa ảnh (Dành cho việc quản lý bài học) */}
-                  <button
-                    type="button"
-                    onClick={(e) => handleDeleteImage(img.id, e)}
-                    className="absolute top-2 right-2 p-1.5 rounded-md bg-white/90 hover:bg-red-600 text-slate-600 hover:text-white dark:bg-slate-900/90 dark:hover:bg-red-600 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer z-10 active:scale-90"
-                    title="Xóa bức ảnh này khỏi thư viện"
-                  >
-                    <Trash2 className="w-3.5 h-3.5" />
-                  </button>
+                  </div>
 
                   {/* Nhãn tiêu đề ảnh góc dưới */}
                   {img.title && (
@@ -332,7 +316,23 @@ export const CollageImageGalleryPanel: React.FC<CollageImageGalleryPanelProps> =
                       </p>
                     </div>
                   )}
-                </div>
+                  
+                  {/* Nút xóa ảnh (Chỉ hiển thị ở chế độ edit) */}
+                  {workspaceMode === 'edit' && (
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDeleteImage(img.id, e);
+                      }}
+                      className="absolute top-2 right-2 p-1.5 rounded-md bg-white/90 hover:bg-red-600 text-slate-600 hover:text-white dark:bg-slate-900/90 dark:hover:bg-red-600 dark:text-slate-300 shadow-sm opacity-0 group-hover:opacity-100 transition-all duration-150 cursor-pointer z-10 active:scale-90"
+                      title="Xóa bức ảnh này"
+                    >
+                      <Trash2 className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </a>
               );
             })}
           </div>
